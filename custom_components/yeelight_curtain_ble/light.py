@@ -37,17 +37,7 @@ class CurtainLight(CurtainEntity, LightEntity):
 
     @property
     def effect(self):
-        data = self.coordinator.data
-        if data["music"].get("on"):
-            return None
-        return next(
-            (
-                name
-                for name, p in self.coordinator.presets.items()
-                if data["effect"][:2] == [p["effect_id"], p["custom_id"]]
-            ),
-            None,
-        )
+        return self.coordinator.preset
 
     async def async_turn_on(self, **kwargs):
         brightness = kwargs.get(ATTR_BRIGHTNESS)

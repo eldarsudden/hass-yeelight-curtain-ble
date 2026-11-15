@@ -9,10 +9,14 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 
-from custom_components.yeelight_curtain_ble.const import DOMAIN, OPT_MUSIC_PALETTE
+from custom_components.yeelight_curtain_ble.const import DOMAIN, OPT_MUSIC_EFFECT, OPT_MUSIC_PALETTE
 from custom_components.yeelight_curtain_ble.coordinator import CurtainCoordinator, load_catalog
 from custom_components.yeelight_curtain_ble.light import CurtainLight
-from custom_components.yeelight_curtain_ble.select import MusicSelect
+from custom_components.yeelight_curtain_ble.select import (
+    MusicSelect,
+    PresetSelect,
+    async_setup_entry,
+)
 
 
 @pytest.fixture
@@ -128,3 +132,49 @@ async def test_regular_effect_exits_music(coordinator, peripheral):
     await coordinator.async_light_on(None, "Bonfire")
     assert coordinator.data["music"]["on"] == 0
     assert coordinator.data["effect"][:2] == [34, 0]
+
+
+async def test_regular_and_music_selects_have_separate_options(coordinator):
+    add_entities = MagicMock()
+    object.__setattr__(coordinator.entry, "runtime_data", coordinator)
+    await async_setup_entry(coordinator.hass, coordinator.entry, add_entities)
+    preset, music_effect, music_palette = add_entities.call_args.args[0]
+    assert isinstance(preset, PresetSelect)
+    assert len(preset.options) == 19 and "Christmas Tree" in preset.options
+    assert "Sound Wave" not in preset.options
+    assert music_effect.options == list(coordinator.catalog["music_effects"])
+    assert music_palette.options == list(coordinator.catalog["palettes"])
+    assert preset.unique_id != music_effect.unique_id != music_palette.unique_id
+
+
+async def test_select_regular_preset_exits_music_without_changing_music_preferences(
+    coordinator, peripheral
+):
+    preset = PresetSelect(coordinator)
+    light = CurtainLight(coordinator)
+    await coordinator.async_music_preference(OPT_MUSIC_EFFECT, "Shine")
+    await coordinator.async_music(True)
+    assert preset.current_option is None and light.effect is None
+    before = len(peripheral.requests)
+    await preset.async_select_option("Christmas Tree")
+    assert preset.current_option == light.effect == "Christmas Tree"
+    assert coordinator.data["music"]["on"] == 0
+    assert light.is_on
+    assert peripheral.file_packets[-1] == b"\x04"
+    music_requests = [r for r in peripheral.requests[before:] if r["method"] == "set_ps"]
+    assert [json.loads(r["params"][1]) for r in music_requests] == [{"on": 0}]
+    assert coordinator.entry.options[OPT_MUSIC_EFFECT] == "Shine"
+
+
+async def test_preset_selection_follows_readback_and_external_changes(coordinator):
+    preset = PresetSelect(coordinator)
+    assert preset.current_option == "UFO"
+    coordinator._props({"fx_effect": '{"effect_id":39,"custom_id":0}'})
+    assert preset.current_option == "Rainbow"
+    coordinator._props({"fx_effect": '{"effect_id":999,"custom_id":0}'})
+    assert preset.current_option is None
+    coordinator.client.set = AsyncMock()
+    with pytest.raises(HomeAssistantError, match="did not confirm"):
+        await preset.async_select_option("Bonfire")
+    # The readback replaces stale notifications, never the unconfirmed request.
+    assert preset.current_option == "UFO"

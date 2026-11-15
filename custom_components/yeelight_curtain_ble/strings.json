@@ -31,6 +31,9 @@
       }
     },
     "select": {
+      "preset": {
+        "name": "Preset"
+      },
       "music_effect": {
         "name": "Music effect"
       },

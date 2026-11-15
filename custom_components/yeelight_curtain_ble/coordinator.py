@@ -69,6 +69,20 @@ class CurtainCoordinator(DataUpdateCoordinator[dict]):
         self._operation_lock = asyncio.Lock()
 
     @property
+    def preset(self) -> str | None:
+        """Return the observed regular preset only while music is inactive."""
+        if not self.data or self.data["music"].get("on"):
+            return None
+        return next(
+            (
+                name
+                for name, preset in self.presets.items()
+                if self.data["effect"][:2] == [preset["effect_id"], preset["custom_id"]]
+            ),
+            None,
+        )
+
+    @property
     def music_effect(self) -> str | None:
         if self.data and self.data["music"].get("on"):
             effect_id = self.data["music"].get("effect_id")

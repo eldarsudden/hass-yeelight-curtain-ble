@@ -31,6 +31,9 @@
       }
     },
     "select": {
+      "preset": {
+        "name": "Пресет"
+      },
       "music_effect": {
         "name": "Музыкальный эффект"
       },

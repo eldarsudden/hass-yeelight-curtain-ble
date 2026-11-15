@@ -30,7 +30,7 @@ async def test_home_assistant_loads_manifest_and_platforms():
     hass = HomeAssistant(str(Path(__file__).parents[1]))
     loader.async_setup(hass)
     integration = await loader.async_get_integration(hass, DOMAIN)
-    assert integration.version == "0.1.0"
+    assert integration.version == "0.1.1"
     assert integration.dependencies == ["bluetooth"]
     assert await integration.async_get_component()
     for platform in ("config_flow", "light", "switch", "select"):
