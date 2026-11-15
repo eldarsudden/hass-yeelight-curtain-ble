@@ -40,6 +40,14 @@ After installation and restart, this button opens integration setup:
 
 [![Set up in Home Assistant](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=yeelight_curtain_ble)
 
+## Connection settings
+
+After setup, open the curtain's **Configure** dialog under **Settings → Devices &
+services → Yeelight Curtain BLE**. **Persistent BLE connection** is enabled by
+default. Disable it to release the adapter/proxy slot after each command with
+readback and after each poll. Polling remains every 30 seconds. Saving reloads
+the integration automatically and keeps music preferences.
+
 ## Optional preset picker with icons
 
 Add this dashboard resource as a **JavaScript module**:

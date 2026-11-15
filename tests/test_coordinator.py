@@ -178,3 +178,72 @@ async def test_preset_selection_follows_readback_and_external_changes(coordinato
         await preset.async_select_option("Bonfire")
     # The readback replaces stale notifications, never the unconfirmed request.
     assert preset.current_option == "UFO"
+
+
+async def test_persistent_default_keeps_connection_between_reads_and_commands(coordinator, peripheral):
+    assert coordinator.persistent_connection is True
+    assert peripheral.is_connected and peripheral.disconnects == 0
+    await coordinator.async_power(True)
+    await coordinator.async_refresh()
+    assert peripheral.is_connected and peripheral.disconnects == 0
+
+
+async def test_on_demand_reconnects_and_releases_after_whole_gif_operation(coordinator, peripheral):
+    coordinator.persistent_connection = False
+    await coordinator.async_refresh()
+    assert not peripheral.is_connected and peripheral.disconnects == 1
+    writes = peripheral.write_gatt_char
+
+    async def connected_write(*args, **kwargs):
+        assert peripheral.is_connected
+        # No disconnect between power, upload, activation and readback.
+        assert peripheral.disconnects == 1
+        await writes(*args, **kwargs)
+
+    peripheral.write_gatt_char = connected_write
+    await coordinator.async_light_on(50, "Christmas Tree")
+    assert not peripheral.is_connected and peripheral.disconnects == 2
+    assert coordinator.data["bright"] == 50 and coordinator.preset == "Christmas Tree"
+    assert peripheral.file_packets[-1] == b"\x04"
+    peripheral.write_gatt_char = writes
+    peripheral.bright = 75
+    await coordinator.async_refresh()
+    assert coordinator.data["bright"] == 75 and coordinator.last_update_success
+    assert not peripheral.is_connected and peripheral.disconnects == 3
+
+
+async def test_on_demand_error_and_cancellation_release_connection(coordinator, peripheral):
+    import asyncio
+
+    coordinator.persistent_connection = False
+    coordinator.client.set = AsyncMock(side_effect=TimeoutError())
+    with pytest.raises(HomeAssistantError):
+        await coordinator.async_power(True)
+    assert not peripheral.is_connected
+    await coordinator.async_refresh()
+    started = asyncio.Event()
+
+    async def cancelled_operation():
+        await coordinator.client.request("get_prop", ["power"])
+        started.set()
+        await asyncio.Event().wait()
+
+    task = asyncio.create_task(coordinator._execute(cancelled_operation, lambda state: True))
+    await started.wait()
+    assert peripheral.is_connected
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert not peripheral.is_connected
+    assert not coordinator._operation_lock.locked()
+
+
+async def test_connection_setting_loaded_and_music_preferences_preserve_it(coordinator):
+    from custom_components.yeelight_curtain_ble.const import OPT_PERSISTENT_CONNECTION
+
+    object.__setattr__(coordinator.entry, "options", MappingProxyType({OPT_PERSISTENT_CONNECTION: False}))
+    reloaded = CurtainCoordinator(coordinator.hass, coordinator.entry, coordinator.catalog)
+    assert reloaded.persistent_connection is False
+    await coordinator.async_music_preference(OPT_MUSIC_PALETTE, "Tranquil")
+    assert coordinator.entry.options[OPT_PERSISTENT_CONNECTION] is False
+    await reloaded.async_shutdown()

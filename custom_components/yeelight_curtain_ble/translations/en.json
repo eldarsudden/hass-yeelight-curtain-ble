@@ -41,5 +41,16 @@
         "name": "Music palette"
       }
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "BLE connection settings",
+        "description": "A persistent connection occupies a Bluetooth adapter or proxy slot. When disabled, disconnect after each command and its readback, and after each poll. Polling continues every 30 seconds; commands may take longer. Device notifications are only received while connected. Saving automatically reloads the integration.",
+        "data": {
+          "persistent_connection": "Persistent BLE connection"
+        }
+      }
+    }
   }
 }

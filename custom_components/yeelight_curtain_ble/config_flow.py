@@ -9,11 +9,12 @@ except ImportError:  # HA releases before the schema migration.
     import voluptuous as schema
 
 from homeassistant.components import bluetooth
-from homeassistant.config_entries import ConfigFlow
+from homeassistant.config_entries import ConfigFlow, OptionsFlowWithReload
 from homeassistant.const import CONF_ADDRESS
+from homeassistant.core import callback
 
 from .client import CurtainClient
-from .const import DOMAIN, NAME_PREFIX
+from .const import DEFAULT_PERSISTENT_CONNECTION, DOMAIN, NAME_PREFIX, OPT_PERSISTENT_CONNECTION
 from .coordinator import ERRORS, connect
 
 _LOGGER = logging.getLogger(__name__)
@@ -21,6 +22,11 @@ _LOGGER = logging.getLogger(__name__)
 
 class CurtainConfigFlow(ConfigFlow, domain=DOMAIN):
     VERSION = 1
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry):
+        return CurtainOptionsFlow()
 
     def __init__(self):
         self._devices = {}
@@ -90,4 +96,27 @@ class CurtainConfigFlow(ConfigFlow, domain=DOMAIN):
                 }
             ),
             errors=errors,
+        )
+
+
+class CurtainOptionsFlow(OptionsFlowWithReload):
+    """Choose connection lifetime without losing saved music preferences."""
+
+    async def async_step_init(self, user_input=None):
+        if user_input is not None:
+            return self.async_create_entry(
+                title="", data={**self.config_entry.options, **user_input}
+            )
+        return self.async_show_form(
+            step_id="init",
+            data_schema=schema.Schema(
+                {
+                    schema.Required(
+                        OPT_PERSISTENT_CONNECTION,
+                        default=self.config_entry.options.get(
+                            OPT_PERSISTENT_CONNECTION, DEFAULT_PERSISTENT_CONNECTION
+                        ),
+                    ): bool,
+                }
+            ),
         )

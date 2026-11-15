@@ -23,9 +23,11 @@ from .client import CurtainClient, CurtainError
 from .const import (
     DEFAULT_MUSIC_EFFECT,
     DEFAULT_MUSIC_PALETTE,
+    DEFAULT_PERSISTENT_CONNECTION,
     DOMAIN,
     OPT_MUSIC_EFFECT,
     OPT_MUSIC_PALETTE,
+    OPT_PERSISTENT_CONNECTION,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -62,6 +64,9 @@ class CurtainCoordinator(DataUpdateCoordinator[dict]):
             hass, _LOGGER, name=DOMAIN, config_entry=entry, update_interval=timedelta(seconds=30)
         )
         self.entry = entry
+        self.persistent_connection = entry.options.get(
+            OPT_PERSISTENT_CONNECTION, DEFAULT_PERSISTENT_CONNECTION
+        )
         self.address = entry.data["address"]
         self.catalog = catalog
         self.presets = {p["display_name"]: p for p in catalog["presets"]}
@@ -127,6 +132,9 @@ class CurtainCoordinator(DataUpdateCoordinator[dict]):
             except ERRORS as error:
                 await self.client.disconnect()
                 raise UpdateFailed(str(error)) from error
+            finally:
+                if not self.persistent_connection:
+                    await self.client.disconnect()
 
     async def _execute(self, operation, verify) -> None:
         async with self._operation_lock:
@@ -137,6 +145,9 @@ class CurtainCoordinator(DataUpdateCoordinator[dict]):
                 await self.client.disconnect()
                 self.async_set_update_error(UpdateFailed(str(error)))
                 raise HomeAssistantError(str(error)) from error
+            finally:
+                if not self.persistent_connection:
+                    await self.client.disconnect()
             self.async_set_updated_data(state)
             if not verify(state):
                 raise HomeAssistantError("Curtain did not confirm the requested state")

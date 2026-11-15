@@ -65,7 +65,16 @@ Use the HA Bluetooth API and `bleak-retry-connector`. Select devices through
 from a proxy that cannot connect are insufficient. The proxy IP is not an
 integration option. A Mac CoreBluetooth UUID cannot replace the BLE address in HA.
 
-Keep one BLE session for notifications and commands. Serialize all operations,
+Default to a persistent BLE session for notifications and commands. The
+`persistent_connection` option defaults to true for existing and new entries.
+When false, release the connection in `finally` after each coordinator poll or
+complete command plus readback, including errors and cancellation, while still
+holding the operation lock. Keep a GIF upload, activation and readback in one
+session. Do not disconnect after individual JSON requests. Polling remains every
+30 seconds; notifications are unavailable between on-demand sessions.
+The options flow reloads the entry when saved; music preference updates must not
+trigger reloads or overwrite this option. Preserve current preferences when
+submitting the options form. Serialize all operations,
 including state reads and GIF uploads. On disconnect, fail pending requests;
 a stale client's callback must not reset a newer session. Do not automatically
 retry state-changing commands.

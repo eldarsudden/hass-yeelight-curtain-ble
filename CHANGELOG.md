@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.3.0 — 2026-11-15
+
+- Add a **Persistent BLE connection** option to the curtain's Configure dialog.
+  It defaults to enabled, preserving existing connection behavior.
+- With persistence disabled, connect for each complete command and its state
+  readback, or for a poll, then release the BLE adapter/proxy slot. GIF upload,
+  activation and verification share one uninterrupted session.
+- Release on-demand connections on success, errors and cancellation. Keep state
+  polling every 30 seconds; device notifications are unavailable while disconnected
+  and commands may take longer because they reconnect.
+- Apply option changes by automatically reloading the integration. Preserve music
+  effect and palette preferences, including changes made while the form is open.
+- Add English and Russian option descriptions and connection-mode documentation.
+
+On-demand operation was tested with a simulated peripheral. Hardware behavior
+through HA/ESPHome and Music Mode persistence after disconnect still need
+verification.
+
 ## 0.2.0 — 2026-11-15
 
 - Add an optional dashboard card with a semantic icon beside every one of the

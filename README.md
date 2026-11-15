@@ -76,7 +76,32 @@ bluetooth_proxy:
 This is a configuration fragment, not a complete firmware configuration.
 Both the Bluetooth and ESPHome integrations must be configured in HA.
 You do not need to enter the proxy's IP address: HA chooses an available adapter.
-The curtain occupies one connection slot while the integration is connected.
+The curtain occupies one connection slot while connected. By default, the
+integration keeps that connection open; see the connection setting below.
+
+## Connection settings
+
+Open **Settings → Devices & services → Yeelight Curtain BLE** and choose
+**Configure** for your curtain. The **Persistent BLE connection** option is
+**enabled by default**, including for existing installations.
+
+- **Enabled:** keep the BLE session open between commands and polls, receive
+  device notifications and occupy one adapter/proxy connection slot.
+- **Disabled:** connect for a command and its state readback, or a scheduled
+  poll, then disconnect. A GIF upload and its activation finish in the same
+  session before disconnecting. The connection slot is released between operations.
+
+Polling remains every **30 seconds** in both modes. With persistence disabled,
+commands may take longer because each operation reconnects, and external changes
+are discovered at the next successful poll rather than through notifications
+while disconnected. Releasing the connection does not itself turn off the light.
+Music Mode behavior after disconnect has not been verified on hardware; use a
+persistent connection if your curtain exits Music Mode when the session closes.
+
+Saving the option automatically reloads this integration; an HA restart is not
+needed. Music effect and palette preferences are preserved. This setting frees
+the slot between operations, but does not coordinate ownership with another BLE
+client that may connect to the curtain.
 
 ## Controls
 

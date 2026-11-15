@@ -66,3 +66,27 @@ async def test_non_connectable_device_rejected(flow):
     info.connectable = False
     result = await flow.async_step_bluetooth(info)
     assert result["type"] == "abort" and result["reason"] == "not_supported"
+
+
+@pytest.mark.parametrize("saved", [{}, {"persistent_connection": False}])
+async def test_options_default_and_preserve_music_preferences(tmp_path, saved):
+    hass = HomeAssistant(str(tmp_path))
+    entry = SimpleNamespace(options={"music_effect": "Shine", "music_palette": "Tranquil", **saved})
+    hass.config_entries = MagicMock()
+    hass.config_entries.async_get_known_entry.return_value = entry
+    options = CurtainConfigFlow.async_get_options_flow(entry)
+    options.hass = hass
+    options.handler = "test-entry"
+    result = await options.async_step_init()
+    assert result["type"] == "form"
+    assert result["data_schema"]({}) == {
+        "persistent_connection": saved.get("persistent_connection", True)
+    }
+    # A music preference may change while the form is open.
+    entry.options["music_effect"] = "Spectrum"
+    result = await options.async_step_init({"persistent_connection": False})
+    assert result["type"] == "create_entry"
+    assert result["data"] == {
+        "persistent_connection": False, "music_effect": "Spectrum", "music_palette": "Tranquil"
+    }
+    assert options.automatic_reload is True
