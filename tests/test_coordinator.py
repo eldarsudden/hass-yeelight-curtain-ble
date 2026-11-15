@@ -43,9 +43,11 @@ async def coordinator(tmp_path, peripheral):
 
     hass.config_entries.async_update_entry.side_effect = update_entry
 
-    async def connect(_hass, _address, disconnected):
+    async def connect(_hass, _address, disconnected, *, client_created=None, client_cleanup=None):
         peripheral.is_connected = True
         peripheral.disconnected_callback = disconnected
+        if client_created is not None:
+            client_created(peripheral)
         return peripheral
 
     with patch("custom_components.yeelight_curtain_ble.coordinator.connect", connect):
@@ -396,3 +398,20 @@ async def test_mounting_entity_repairs_reset_entry_and_preserves_preferences(coo
     with pytest.raises(HomeAssistantError, match="Unknown mounting"):
         await mounting.async_select_option("middle")
     assert len(peripheral.requests) == before
+
+
+async def test_stopped_coordinator_cannot_execute_queued_command(coordinator, peripheral):
+    import asyncio
+
+    await coordinator._operation_lock.acquire()
+    queued = asyncio.create_task(coordinator.async_mounting_side("left"))
+    await asyncio.sleep(0)
+    stopping = asyncio.create_task(coordinator.async_shutdown())
+    await asyncio.sleep(0)
+    assert coordinator.client.closed
+    count = len(peripheral.requests)
+    coordinator._operation_lock.release()
+    with pytest.raises(HomeAssistantError, match="stopping"):
+        await queued
+    await stopping
+    assert len(peripheral.requests) == count and not peripheral.is_connected

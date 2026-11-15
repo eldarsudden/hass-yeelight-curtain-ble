@@ -1,7 +1,6 @@
 """Discover the curtain and verify state or explicitly chosen initial placement."""
 
 import logging
-from functools import partial
 
 try:
     import probatio as schema
@@ -14,7 +13,6 @@ from homeassistant.const import CONF_ADDRESS
 from homeassistant.core import callback
 from homeassistant.helpers import selector
 
-from .client import CurtainClient
 from .const import (
     DEFAULT_PERSISTENT_CONNECTION,
     DOMAIN,
@@ -22,7 +20,7 @@ from .const import (
     NAME_PREFIX,
     OPT_PERSISTENT_CONNECTION,
 )
-from .coordinator import ERRORS, connect
+from .coordinator import ERRORS, create_client
 from .custom_gif import OPT_CUSTOM_GIFS, OPT_LAST_CUSTOM_GIF, import_uploaded_gif
 
 _LOGGER = logging.getLogger(__name__)
@@ -52,11 +50,11 @@ class CurtainConfigFlow(ConfigFlow, domain=DOMAIN):
         return await self.async_step_confirm()
 
     async def _validate(self, address):
-        client = CurtainClient(partial(connect, self.hass, address))
+        client = create_client(self.hass, address)
         try:
             return await client.read_state()
         finally:
-            await client.disconnect()
+            await client.close()
 
     async def _create(self, address):
         await self.async_set_unique_id(address)
@@ -78,7 +76,7 @@ class CurtainConfigFlow(ConfigFlow, domain=DOMAIN):
                 errors["base"] = "setup_failed"
             else:
                 address = self._pending_address
-                client = CurtainClient(partial(connect, self.hass, address))
+                client = create_client(self.hass, address)
                 try:
                     await self.async_set_unique_id(address)
                     self._abort_if_unique_id_configured()
@@ -89,7 +87,7 @@ class CurtainConfigFlow(ConfigFlow, domain=DOMAIN):
                 else:
                     return self.async_create_entry(title=self._devices[address], data={CONF_ADDRESS: address})
                 finally:
-                    await client.disconnect()
+                    await client.close()
         return self.async_show_form(
             step_id="placement",
             data_schema=schema.Schema({

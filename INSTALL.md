@@ -61,6 +61,13 @@ default. Disable it to release the adapter/proxy slot after each command with
 readback and after each poll. Polling remains every 30 seconds. Saving reloads
 the integration automatically and keeps music preferences.
 
+If a disconnect cannot be confirmed, new connections are blocked until cleanup
+succeeds and a warning appears in HA's log. For slots already orphaned on a proxy,
+disable this integration, restart the affected proxy and re-enable the integration.
+Restarting the proxy also disconnects its other BLE clients. Startup and 30-second
+state reads remain enabled; full passive state decoding is not verified for this
+curtain.
+
 ## Custom GIF library
 
 In the same **Configure** dialog, enter a GIF name and choose a file. Use a

@@ -29,10 +29,19 @@ class CurtainClient:
         connect: Callable[..., Awaitable[BleakClient]],
         on_props: Callable[[dict[str, Any]], None] | None = None,
         timeout: float = 10,
+        disconnect_timeout: float = 35,
     ) -> None:
         self._connect = connect
         self._on_props = on_props
         self._timeout = timeout
+        self._disconnect_timeout = disconnect_timeout
+        self._lifecycle_lock = asyncio.Lock()
+        self._connect_task: asyncio.Task | None = None
+        self._cleanup_task: asyncio.Task | None = None
+        self._cleanup_required = False
+        self._closed = False
+        self._ready = False
+        self._subscriptions: set[str] = set()
         self._client: BleakClient | None = None
         self._buffer = bytearray()
         self._pending: dict[int, asyncio.Future] = {}
@@ -44,7 +53,10 @@ class CurtainClient:
     def _disconnected(self, client: BleakClient) -> None:
         if self._client is not client:
             return
-        self._client = None
+        # A link-down callback is not backend resource cleanup. Retain the client
+        # until disconnect() completes, even when is_connected is already false.
+        self._ready = False
+        self._cleanup_required = True
         if self._file_subscribed:
             self._file_ack.put_nowait(b"")
         self._file_subscribed = False
@@ -86,46 +98,149 @@ class CurtainClient:
                     if not future.done():
                         future.set_exception(CurtainError("Malformed JSON notification"))
 
-    async def _ensure_connected(self) -> BleakClient:
-        if self._client is not None and self._client.is_connected:
-            return self._client
-        self._buffer.clear()
-        self._file_subscribed = False
-        client = await self._connect(self._disconnected)
-        self._client = client
-        try:
-            for uuid in (JSON_WRITE, JSON_NOTIFY):
-                if client.services.get_characteristic(uuid) is None:
-                    raise CurtainError("Device lacks the curtain JSON characteristics")
-            await asyncio.wait_for(client.start_notify(JSON_NOTIFY, self._notify), self._timeout)
-        except BaseException:
-            await self.disconnect()
-            raise
-        return client
+    @property
+    def cleanup_required(self) -> bool:
+        return self._cleanup_required
 
-    async def disconnect(self) -> None:
+    def invalidate(self) -> None:
+        """Require teardown after a protocol or transport error."""
+        self._ready = False
+        self._cleanup_required = True
+
+    async def cleanup_failed_connect(self) -> None:
+        """Connector hook: finish cleanup before its internal retry can run.
+
+        Called only from the connection task while _ensure_connected owns the
+        lifecycle lock. Acquiring that lock again here would deadlock.
+        """
+        await self._disconnect_locked()
+
+    @property
+    def closed(self) -> bool:
+        return self._closed
+
+    def track_client(self, client: BleakClient) -> None:
+        """Retain a backend before connect awaits, including failed attempts."""
+        self._client = client
+        self._cleanup_required = True
+
+    def stop(self) -> None:
+        """Close the connect gate synchronously before waiting for operations."""
+        self._closed = True
+        if self._file_subscribed:
+            self._file_ack.put_nowait(b"")
+        self._fail_pending()
+        if self._connect_task is not None:
+            self._connect_task.cancel()
+
+    async def close(self) -> None:
+        """Permanently stop this owner and finish any outstanding teardown."""
+        self.stop()
+        await self.disconnect()
+
+    async def _ensure_connected(self) -> BleakClient:
+        async with self._lifecycle_lock:
+            if self._closed:
+                raise CurtainError("Curtain connection is stopping")
+            if (
+                self._client is not None and self._client.is_connected
+                and self._ready and not self._cleanup_required
+            ):
+                return self._client
+            # Do not replace even a locally disconnected client until its backend
+            # teardown has finished. ESPHome can clear is_connected in a finally.
+            await self._disconnect_locked()
+            if self._closed:
+                raise CurtainError("Curtain connection is stopping")
+            self._buffer.clear()
+            self._file_subscribed = False
+            try:
+                self._connect_task = asyncio.create_task(self._connect(self._disconnected))
+                client = await self._connect_task
+                self._client = client
+                self._cleanup_required = True
+                if self._closed or not client.is_connected:
+                    raise CurtainError("Curtain connection stopped during setup")
+                for uuid in (JSON_WRITE, JSON_NOTIFY):
+                    if client.services.get_characteristic(uuid) is None:
+                        raise CurtainError("Device lacks the curtain JSON characteristics")
+                # Track before awaiting: subscription may partly succeed and raise.
+                self._subscriptions.add(JSON_NOTIFY)
+                await asyncio.wait_for(
+                    client.start_notify(
+                        JSON_NOTIFY,
+                        lambda characteristic, data: self._notify(characteristic, data)
+                        if self._client is client and not self._closed else None,
+                    ), self._timeout,
+                )
+                if self._closed or not client.is_connected:
+                    raise CurtainError("Curtain disconnected during notification setup")
+                self._ready = True
+                self._cleanup_required = False
+                return client
+            except BaseException:
+                try:
+                    await self._disconnect_locked()
+                except CurtainError:
+                    # Keep the original failure; the retained owner blocks a new
+                    # connection until cleanup succeeds on the next explicit try.
+                    _LOGGER.warning("BLE setup failed and backend cleanup is still pending")
+                raise
+            finally:
+                self._connect_task = None
+
+    async def _cleanup_backend(self, client: BleakClient) -> None:
+        """Release subscriptions, then the backend, even after a link-down event."""
+        try:
+            if client.is_connected:
+                for uuid in tuple(self._subscriptions):
+                    try:
+                        await asyncio.wait_for(client.stop_notify(uuid), 3)
+                    except (BleakError, TimeoutError, OSError):
+                        _LOGGER.debug("Could not stop BLE notifications during teardown", exc_info=True)
+        finally:
+            await client.disconnect()
+        if client.is_connected:
+            raise CurtainError("BLE backend still reports connected after disconnect")
+
+    @staticmethod
+    def _retrieve_cleanup_error(task: asyncio.Task) -> None:
+        # Shielded teardown can finish after its caller times out or is cancelled.
+        # Retrieve the error without dropping the task or treating failure as success.
+        if not task.cancelled():
+            task.exception()
+
+    async def _disconnect_locked(self) -> None:
         client = self._client
+        self._ready = False
         self._file_subscribed = False
         self._fail_pending()
         if client is None:
             return
+        self._cleanup_required = True
+        task = self._cleanup_task
+        if task is None or (task.done() and (task.cancelled() or task.exception() is not None)):
+            task = self._cleanup_task = asyncio.create_task(self._cleanup_backend(client))
+            task.add_done_callback(self._retrieve_cleanup_error)
         try:
-            await asyncio.wait_for(client.disconnect(), self._timeout)
-        except (BleakError, TimeoutError) as err:
-            if client.is_connected:
-                _LOGGER.warning(
-                    "BLE disconnect failed; keeping the existing client to avoid opening a duplicate connection: %s",
-                    err,
-                )
-                return
-            _LOGGER.debug("BLE disconnect returned an error after the link closed: %s", err)
-        if client.is_connected:
+            # JSON's 10s request deadline must not cancel the ESPHome disconnect
+            # acknowledgment (up to 20s) or its subsequent slot-settle window.
+            await asyncio.wait_for(asyncio.shield(task), self._disconnect_timeout)
+        except (BleakError, TimeoutError, OSError, CurtainError) as error:
             _LOGGER.warning(
-                "BLE disconnect returned while the client is still connected; retaining the client"
+                "BLE cleanup is unconfirmed; retaining the backend and blocking new connections: %s",
+                str(error) or type(error).__name__,
             )
-            return
+            raise CurtainError("BLE cleanup is unconfirmed; new connections are blocked") from error
         if self._client is client:
             self._client = None
+            self._subscriptions.clear()
+            self._cleanup_required = False
+        self._cleanup_task = None
+
+    async def disconnect(self) -> None:
+        async with self._lifecycle_lock:
+            await self._disconnect_locked()
 
     async def request(self, method: str, params: list) -> list:
         async with self._lock:
@@ -229,9 +344,11 @@ class CurtainClient:
                     "this Bluetooth adapter/proxy cannot currently provide them"
                 )
             if not self._file_subscribed:
+                self._subscriptions.add(FILE_NOTIFY)
                 await asyncio.wait_for(
                     client.start_notify(
                         FILE_NOTIFY, lambda _char, data: self._file_ack.put_nowait(bytes(data))
+                        if self._client is client and not self._closed else None
                     ),
                     self._timeout,
                 )

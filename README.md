@@ -117,12 +117,16 @@ Open **Settings → Devices & services → Yeelight Curtain BLE** and choose
   device notifications and occupy one adapter/proxy connection slot.
 - **Disabled:** connect for a command and its state readback, or a scheduled
   poll, then disconnect. A GIF upload and its activation finish in the same
-  session before disconnecting. The connection slot is released between operations.
+  session before disconnecting. A successful disconnect releases the connection
+  slot between operations.
 
 Polling remains every **30 seconds** in both modes. With persistence disabled,
 commands may take longer because each operation reconnects, and external changes
 are discovered at the next successful poll rather than through notifications
-while disconnected. Releasing the connection does not itself turn off the light.
+while disconnected. A state read also runs at startup. Complete power, brightness,
+color and effect state cannot currently be decoded reliably from this model's
+advertisements, so passive scanning does not replace these reads.
+Releasing the connection does not itself turn off the light.
 Music Mode behavior after disconnect has not been verified on hardware; use a
 persistent connection if your curtain exits Music Mode when the session closes.
 
@@ -130,6 +134,14 @@ Saving the option automatically reloads this integration; an HA restart is not
 needed. Music effect and palette preferences are preserved. This setting frees
 the slot between operations, but does not coordinate ownership with another BLE
 client that may connect to the curtain.
+
+If teardown fails or times out, the integration logs a warning and blocks new
+connections until cleanup of the previous backend succeeds. It retains that
+backend across integration reloads and waits separately for disconnect rather
+than applying the shorter command timeout. Repeatedly restarting HA does not
+clear a slot already orphaned inside a proxy. Disable this integration, restart
+the affected proxy, then re-enable the integration to clear existing orphaned
+slots. This also interrupts other BLE devices using that proxy.
 
 ## Controls
 

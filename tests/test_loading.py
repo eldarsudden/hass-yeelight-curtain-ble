@@ -60,3 +60,28 @@ async def test_connection_uses_ha_selected_connectable_device():
         assert established.call_args.args[1] is device
         assert established.call_args.kwargs["disconnected_callback"] is disconnected
         assert established.call_args.kwargs["ble_device_callback"]() is device
+
+
+async def test_setup_registers_ble_shutdown_before_first_read(tmp_path):
+    from unittest.mock import MagicMock
+
+    from homeassistant.const import EVENT_HOMEASSISTANT_STOP
+
+    from custom_components.yeelight_curtain_ble import async_setup_entry
+
+    hass = HomeAssistant(str(tmp_path))
+    hass.config_entries = SimpleNamespace(async_forward_entry_setups=AsyncMock())
+    entry = SimpleNamespace(entry_id="test", options={}, async_on_unload=MagicMock())
+    coordinator = SimpleNamespace(
+        async_config_entry_first_refresh=AsyncMock(), async_shutdown=AsyncMock()
+    )
+    with (
+        patch("custom_components.yeelight_curtain_ble.cleanup_library"),
+        patch("custom_components.yeelight_curtain_ble.load_catalog", return_value={}),
+        patch("custom_components.yeelight_curtain_ble.CurtainCoordinator", return_value=coordinator),
+    ):
+        assert await async_setup_entry(hass, entry)
+        hass.bus.async_fire(EVENT_HOMEASSISTANT_STOP)
+        await hass.async_block_till_done()
+    coordinator.async_shutdown.assert_awaited_once()
+    entry.async_on_unload.assert_called_once()

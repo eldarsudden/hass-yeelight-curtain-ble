@@ -35,6 +35,9 @@ class Peripheral:
     async def start_notify(self, uuid, callback):
         self.callbacks[uuid] = callback
 
+    async def stop_notify(self, uuid):
+        self.callbacks.pop(uuid, None)
+
     async def disconnect(self):
         self.is_connected = False
         self.disconnects += 1

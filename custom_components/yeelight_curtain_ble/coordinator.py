@@ -49,20 +49,68 @@ def load_catalog() -> dict:
     return json.loads((_ROOT / "catalog.json").read_text(encoding="utf-8"))
 
 
-async def connect(hass: HomeAssistant, address: str, disconnected_callback):
+async def connect(hass: HomeAssistant, address: str, disconnected_callback, *, client_created=None, client_cleanup=None):
     """Use the connectable adapter/proxy chosen by Home Assistant."""
     lookup = partial(bluetooth.async_ble_device_from_address, hass, address, connectable=True)
     device = lookup()
     if device is None:
         raise CurtainError("No connectable Bluetooth adapter/proxy can currently reach the curtain")
+    client_class = BleakClientWithServiceCache
+    if client_created is not None:
+        class TrackedClient(BleakClientWithServiceCache):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                client_created(self)
+
+            async def connect(self, *args, **kwargs):
+                client_created(self)
+                try:
+                    return await super().connect(*args, **kwargs)
+                except BaseException:
+                    # establish_connection reuses a client for internal retries.
+                    # Do not let its next attempt run over an unclean backend.
+                    if client_cleanup is not None:
+                        await client_cleanup()
+                    raise
+
+        client_class = TrackedClient
     return await establish_connection(
-        BleakClientWithServiceCache,
+        client_class,
         device,
         device.name or address,
         disconnected_callback=disconnected_callback,
         ble_device_callback=lookup,
         max_attempts=3,
     )
+
+
+def create_client(hass: HomeAssistant, address: str, on_props=None) -> CurtainClient:
+    """One live owner per address, including config flows and setup retries.
+
+    Retain stopped owners with unconfirmed cleanup across integration reloads.
+    This registry contains no proxy credentials and uses only HA's BLE backend.
+    """
+    registry = hass.data.setdefault(f"{DOMAIN}_connections", {"owners": {}, "locks": {}})
+    key = address.upper()
+    lock = registry["locks"].setdefault(key, asyncio.Lock())
+
+    async def connector(disconnected):
+        async with lock:
+            previous = registry["owners"].get(key)
+            if previous is not None and previous is not client:
+                if not previous.closed:
+                    raise CurtainError("Another curtain session already owns this device")
+                # A failed setup/reload must not abandon a backend that could
+                # still own a proxy slot, even if it locally reports link down.
+                await previous.disconnect()
+            registry["owners"][key] = client
+            return await connect(
+                hass, address, disconnected, client_created=client.track_client,
+                client_cleanup=client.cleanup_failed_connect,
+            )
+
+    client = CurtainClient(connector, on_props)
+    return client
 
 
 class CurtainCoordinator(DataUpdateCoordinator[dict]):
@@ -79,7 +127,8 @@ class CurtainCoordinator(DataUpdateCoordinator[dict]):
         self.address = entry.data["address"]
         self.catalog = catalog
         self.presets = {p["display_name"]: p for p in catalog["presets"]}
-        self.client = CurtainClient(partial(connect, hass, self.address), self._props)
+        self.client = create_client(hass, self.address, self._props)
+        self._closing = False
         self._operation_lock = asyncio.Lock()
 
     @property
@@ -116,7 +165,7 @@ class CurtainCoordinator(DataUpdateCoordinator[dict]):
 
     @callback
     def _props(self, props: dict) -> None:
-        if not self.data or not self.last_update_success:
+        if self._closing or not self.data or not self.last_update_success:
             return
         state = deepcopy(self.data)
         try:
@@ -162,27 +211,38 @@ class CurtainCoordinator(DataUpdateCoordinator[dict]):
 
     async def _async_update_data(self) -> dict:
         async with self._operation_lock:
+            if self._closing:
+                raise UpdateFailed("Curtain coordinator is stopping")
             try:
                 return await self.client.read_state()
             except ERRORS as error:
-                await self.client.disconnect()
+                self.client.invalidate()
                 raise UpdateFailed(str(error)) from error
             finally:
-                if not self.persistent_connection:
-                    await self.client.disconnect()
+                if not self.persistent_connection or self.client.cleanup_required:
+                    try:
+                        await self.client.disconnect()
+                    except CurtainError as error:
+                        raise UpdateFailed(str(error)) from error
 
     async def _execute(self, operation, verify) -> None:
         async with self._operation_lock:
+            if self._closing:
+                raise HomeAssistantError("Curtain coordinator is stopping")
             try:
                 await operation()
                 state = await self.client.read_state()
             except ERRORS as error:
-                await self.client.disconnect()
+                self.client.invalidate()
                 self.async_set_update_error(UpdateFailed(str(error)))
                 raise HomeAssistantError(str(error)) from error
             finally:
-                if not self.persistent_connection:
-                    await self.client.disconnect()
+                if not self.persistent_connection or self.client.cleanup_required:
+                    try:
+                        await self.client.disconnect()
+                    except CurtainError as error:
+                        self.async_set_update_error(UpdateFailed(str(error)))
+                        raise HomeAssistantError(str(error)) from error
             self.async_set_updated_data(state)
             if not verify(state):
                 raise HomeAssistantError("Curtain did not confirm the requested state")
@@ -378,6 +438,13 @@ class CurtainCoordinator(DataUpdateCoordinator[dict]):
             self._save_music_preferences(effect, palette)
 
     async def async_shutdown(self) -> None:
+        self._closing = True
+        self.client.stop()
         await super().async_shutdown()
         async with self._operation_lock:
-            await self.client.disconnect()
+            try:
+                await self.client.close()
+            except CurtainError:
+                # The per-address registry retains the owner and blocks the next
+                # setup until its cleanup is confirmed. Do not break HA unload.
+                _LOGGER.warning("Curtain shutdown left an unconfirmed BLE cleanup")

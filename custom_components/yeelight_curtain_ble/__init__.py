@@ -1,7 +1,7 @@
 """Local Yeelight Curtain BLE integration."""
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import Platform
+from homeassistant.const import EVENT_HOMEASSISTANT_STOP, Platform
 from homeassistant.core import HomeAssistant
 
 from .coordinator import CurtainCoordinator, load_catalog
@@ -23,6 +23,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     catalog = await hass.async_add_executor_job(load_catalog)
     coordinator = CurtainCoordinator(hass, entry, catalog)
+
+    async def stop_connection(_event):
+        await coordinator.async_shutdown()
+
+    entry.async_on_unload(
+        hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, stop_connection)
+    )
     try:
         await coordinator.async_config_entry_first_refresh()
         entry.runtime_data = coordinator

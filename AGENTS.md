@@ -85,10 +85,46 @@ The options flow reloads the entry when saved; music preference updates must not
 trigger reloads or overwrite this option. Preserve current preferences when
 submitting the options form. Serialize all operations,
 including state reads and GIF uploads. On disconnect, fail pending requests;
-a stale client's callback must not reset a newer session. If disconnect times out
-or the client still reports connected, retain that client and log a warning so
-the next operation reuses it instead of opening a duplicate connection. Do not
-automatically retry state-changing commands.
+a stale client's callback or notification must not affect a newer session.
+
+Do not discard a backend in the link-down callback. Its `is_connected` can turn
+false in a backend finally block even when the ESPHome release API failed. Retain
+it until backend disconnect completes successfully and it reports disconnected.
+Before replacing it, stop subscribed JSON/GIF notifications when still connected,
+then always call backend disconnect, including after an unsolicited link loss.
+Use a separate 35-second cleanup wait: the ESPHome API can wait up to 20 seconds
+for an acknowledgment, with additional subscription/slot-settle work. Shield the
+cleanup task so request cancellation or timeout does not abandon its owner. Keep
+failed/pending cleanup visible and block a new connection until it succeeds.
+
+The production `create_client` registry in HA data has one owner per normalized
+address and serializes ownership changes. Closed owners with unconfirmed cleanup
+are retained across config-flow exits, setup retries and entry reloads. This is
+process-local and cannot reclaim orphaned handles after an HA process restart.
+Track each backend in the retry connector's client constructor and before every
+internal connect attempt; clean a failed attempt before another retry. Cleanup
+failure raises CurtainError to stop retries rather than letting the library
+allocate another session. Do not use private ESPHome API credentials or reboot a
+proxy automatically. Do not automatically retry state-changing commands.
+
+Close the client gate synchronously before shutdown awaits; cancel an in-flight
+connect and reject queued/late operations. Register the coordinator shutdown on
+HA stop before the initial read, in addition to HA's unload callback and explicit
+setup-failure cleanup. The same owner is terminal after close.
+
+Captured advertisements use FE87 and a short manufacturer 0x0164 payload. Raw
+Android legacy/extended advertising reports and Mac scan records have been
+inspected. The color-setting session contains no advertisements during its HSV
+commands, so these captures do not validate passive color/brightness/effect
+readback. Some manufacturer fields vary, but their full meaning is unconfirmed.
+Do not infer a complete decoder or publish a requested value as observed state.
+Keep initial reads and 30-second polling until adequate evidence exists. TTLock's
+passive-state design cannot simply be copied to this different protocol.
+
+Regression tests model a backend that reports local link-down and raises during
+release, delayed and cancelled cleanup, incomplete setup, per-address ownership,
+internal connector retries, HA stop and stale callbacks. These are simulated
+backend tests, not physical ESPHome slot-allocation verification.
 
 Verify the response and actual state after a command. Do not replace observed
 state with the requested value. Current behavior uses readback after changes,

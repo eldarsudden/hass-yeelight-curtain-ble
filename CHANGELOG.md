@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.6.2 — 2026-11-15
+
+- Keep a disconnected backend until its resource cleanup completes. A link-down
+  callback or `is_connected == false` is not treated as proof of proxy-slot release.
+- Stop JSON and GIF notifications before disconnecting, and still call backend
+  disconnect after unsolicited link loss or partially completed notification setup.
+- Give teardown its own 35-second wait instead of the 10-second JSON request
+  timeout. Shield in-progress cleanup from caller cancellation and retain it
+  across timeouts; do not open another connection until it completes successfully.
+- Track backends before connection setup awaits. Clean a failed attempt before
+  the retry connector can reuse it; stop internal retries if cleanup is unconfirmed.
+- Allow one active integration owner per device address across config flows,
+  coordinator startup and reloads. Retain stopped owners with pending cleanup
+  so setup retries cannot abandon them and allocate another session.
+- Close the connection gate on shutdown, cancel an in-flight connect, ignore
+  stale-session notifications and register cleanup on Home Assistant stop.
+- Add regression coverage for late callbacks, queued commands, cancellation,
+  partial setup and disconnect failures that falsely report a closed local link.
+
+These changes address integration-side resource leaks; they cannot prove that
+a proxy released a slot when its backend reports success incorrectly. Existing
+orphaned slots may require a proxy restart with the integration disabled.
+A full passive advertisement decoder is not established for YLYDD-0053, so state
+reads at startup and the 30-second polling interval are retained. Actual HA/ESPHome
+proxy hardware verification remains pending.
+
 ## 0.6.1 — 2026-11-15
 
 - Keep the BLE client reference if disconnect times out or the client still

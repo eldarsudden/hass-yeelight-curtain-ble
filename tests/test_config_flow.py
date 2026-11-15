@@ -125,13 +125,15 @@ async def test_unconfigured_curtain_requires_explicit_placement(flow, peripheral
     peripheral.adapter_set = 0
     peripheral.adapter_side = 0
 
-    async def connect(_hass, _address, callback):
+    async def connect(_hass, _address, callback, *, client_created=None, client_cleanup=None):
         peripheral.is_connected = True
         peripheral.disconnected_callback = callback
+        if client_created is not None:
+            client_created(peripheral)
         return peripheral
 
     with (
-        patch("custom_components.yeelight_curtain_ble.config_flow.connect", connect),
+        patch("custom_components.yeelight_curtain_ble.coordinator.connect", connect),
         patch("custom_components.yeelight_curtain_ble.config_flow.bluetooth.async_discovered_service_info", return_value=[discovery()]),
     ):
         if source == "bluetooth":
@@ -153,12 +155,14 @@ async def test_failed_placement_keeps_form_open_and_retry_uses_readback(flow, pe
     from custom_components.yeelight_curtain_ble.client import CurtainClient
 
     peripheral.adapter_set = 0
-    async def connect(_hass, _address, callback):
+    async def connect(_hass, _address, callback, *, client_created=None, client_cleanup=None):
         peripheral.is_connected = True
         peripheral.disconnected_callback = callback
+        if client_created is not None:
+            client_created(peripheral)
         return peripheral
 
-    with patch("custom_components.yeelight_curtain_ble.config_flow.connect", connect):
+    with patch("custom_components.yeelight_curtain_ble.coordinator.connect", connect):
         await flow.async_step_bluetooth(discovery())
         result = await flow.async_step_confirm({})
         assert result["step_id"] == "placement"
@@ -177,12 +181,14 @@ async def test_failed_placement_keeps_form_open_and_retry_uses_readback(flow, pe
 
 async def test_configured_curtain_preserves_existing_side(flow, peripheral):
     peripheral.adapter_side = 0
-    async def connect(_hass, _address, callback):
+    async def connect(_hass, _address, callback, *, client_created=None, client_cleanup=None):
         peripheral.is_connected = True
         peripheral.disconnected_callback = callback
+        if client_created is not None:
+            client_created(peripheral)
         return peripheral
 
-    with patch("custom_components.yeelight_curtain_ble.config_flow.connect", connect):
+    with patch("custom_components.yeelight_curtain_ble.coordinator.connect", connect):
         await flow.async_step_bluetooth(discovery())
         result = await flow.async_step_confirm({})
     assert result["type"] == "create_entry"
