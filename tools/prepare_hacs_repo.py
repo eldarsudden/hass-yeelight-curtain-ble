@@ -18,12 +18,17 @@ def main():
             "README.md",
             "AGENTS.md",
             "INSTALL.md",
+            "CHANGELOG.md",
             "hacs.json",
             "pyproject.toml",
             "requirements-dev.txt",
         )
     ]
-    files += [ROOT / "tools/build_release.py", ROOT / "tools/prepare_hacs_repo.py"]
+    files += [
+        ROOT / "tools/build_release.py",
+        ROOT / "tools/prepare_hacs_repo.py",
+        ROOT / ".github/workflows/release.yml",
+    ]
     for folder in (ROOT / "custom_components/yeelight_curtain_ble", ROOT / "tests"):
         files += [
             p
