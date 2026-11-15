@@ -90,3 +90,31 @@ async def test_options_default_and_preserve_music_preferences(tmp_path, saved):
         "persistent_connection": False, "music_effect": "Spectrum", "music_palette": "Tranquil"
     }
     assert options.automatic_reload is True
+
+
+async def test_options_import_remove_and_preserve_settings(tmp_path):
+    from custom_components.yeelight_curtain_ble.custom_gif import OPT_CUSTOM_GIFS
+
+    hass = HomeAssistant(str(tmp_path))
+    old = {"name": "Old", "sha256": "a" * 64}
+    entry = SimpleNamespace(entry_id="entry", options={OPT_CUSTOM_GIFS: {"Old": old}, "music_effect": "Shine", "last_custom_gif": "Old"})
+    hass.config_entries = MagicMock()
+    hass.config_entries.async_get_known_entry.return_value = entry
+    options = CurtainConfigFlow.async_get_options_flow(entry)
+    options.hass, options.handler = hass, "entry"
+    missing = await options.async_step_init({"persistent_connection": False, "gif_name": "New"})
+    assert missing["errors"] == {"base": "gif_name_and_file"}
+    metadata = {"name": "New", "sha256": "b" * 64}
+    with patch("custom_components.yeelight_curtain_ble.config_flow.import_uploaded_gif", return_value=metadata) as importer:
+        result = await options.async_step_init({"persistent_connection": False, "gif_name": "New", "gif_file": "upload", "remove_gifs": ["Old"]})
+    importer.assert_called_once_with(hass, "entry", "upload", "New")
+    assert result["data"] == {OPT_CUSTOM_GIFS: {"New": metadata}, "music_effect": "Shine", "persistent_connection": False}
+    replacement = {"name": "Old", "sha256": "b" * 64}
+    with patch("custom_components.yeelight_curtain_ble.config_flow.import_uploaded_gif", return_value=replacement):
+        result = await options.async_step_init({"persistent_connection": True, "gif_name": "Old", "gif_file": "upload"})
+    assert "last_custom_gif" not in result["data"]
+    assert result["data"][OPT_CUSTOM_GIFS]["Old"] == replacement
+    with patch("custom_components.yeelight_curtain_ble.config_flow.import_uploaded_gif", side_effect=ValueError()):
+        result = await options.async_step_init({"persistent_connection": True, "gif_name": "New", "gif_file": "upload"})
+    assert result["type"] == "form" and result["errors"] == {"base": "invalid_gif"}
+    assert entry.options[OPT_CUSTOM_GIFS] == {"Old": old}

@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.4.0 — 2026-11-15
+
+- Add a private custom GIF library per curtain, imported using HA's native file
+  selector in the Configure dialog. Support named imports, replacement and removal.
+  Importing a file does not send device commands.
+- Validate 19×25-pixel GIFs with 1–48 frames and at most 128520 bytes. Decode all
+  frames, use content-addressed storage and revalidate checksums before playback.
+- Keep user files outside the HACS component so updates preserve them. Remove
+  unused managed files when the integration reloads after library changes.
+- Add a separate **GIF — last requested** selector. Selecting an item uploads and
+  activates it; automations use the standard `select.select_option` action.
+- Keep the entire transfer, activation and readback in one serialized BLE session,
+  including when persistent connections are disabled. Never activate after a
+  failed upload or report a rejected command as successful.
+- Reuse the observed GIF renderer marker instead of inventing a custom firmware
+  slot. Avoid identifying a custom upload as the regular Christmas Tree preset.
+  The GIF selector explicitly reports the last request, not a readable file identity.
+- Preserve the existing regular preset picker, music settings and connection option.
+  Add English/Russian UI text and documentation.
+
+Custom GIF rendering is experimental and has not been visually verified on the
+curtain. Transfer acknowledgments and numeric effect readback do not prove file
+identity or correct animation. Limits are conservative integration bounds based
+on captured single-curtain files; MTU 512 and 509-byte writes are required.
+
 ## 0.3.0 — 2026-11-15
 
 - Add a **Persistent BLE connection** option to the curtain's Configure dialog.

@@ -29,6 +29,13 @@ from .const import (
     OPT_MUSIC_PALETTE,
     OPT_PERSISTENT_CONNECTION,
 )
+from .custom_gif import (
+    GIF_EFFECT,
+    OPT_CUSTOM_GIFS,
+    OPT_CUSTOM_SLOT,
+    OPT_LAST_CUSTOM_GIF,
+    read_custom_gif,
+)
 
 _LOGGER = logging.getLogger(__name__)
 _ROOT = Path(__file__).parent
@@ -77,6 +84,9 @@ class CurtainCoordinator(DataUpdateCoordinator[dict]):
     def preset(self) -> str | None:
         """Return the observed regular preset only while music is inactive."""
         if not self.data or self.data["music"].get("on"):
+            return None
+        if self.entry.options.get(OPT_CUSTOM_SLOT) and self.data["effect"][:2] == GIF_EFFECT:
+            # Firmware reports a numeric GIF marker, not a filename or content hash.
             return None
         return next(
             (
@@ -182,6 +192,10 @@ class CurtainCoordinator(DataUpdateCoordinator[dict]):
                     await self.client.set("set_ps", ["mic_music_mode", '{"on":0}'])
                 if gif is not None:
                     await self.client.upload(gif)
+                    if [preset["effect_id"], preset["custom_id"]] == GIF_EFFECT:
+                        self.hass.config_entries.async_update_entry(
+                            self.entry, options={**self.entry.options, OPT_CUSTOM_SLOT: False}
+                        )
                 await self.client.set(
                     "set_fx_effect",
                     [preset["effect_id"], preset["custom_id"], 1, preset["options"]],
@@ -202,6 +216,40 @@ class CurtainCoordinator(DataUpdateCoordinator[dict]):
             )
 
         await self._execute(operation, verify)
+
+    async def async_custom_gif(self, name: str) -> None:
+        """Upload a library GIF using the observed GIF renderer activation command."""
+        metadata = self.entry.options.get(OPT_CUSTOM_GIFS, {}).get(name)
+        if metadata is None:
+            raise HomeAssistantError("Unknown custom GIF")
+        try:
+            gif = await self.hass.async_add_executor_job(
+                read_custom_gif, self.hass, self.entry.entry_id, metadata
+            )
+        except (ValueError, OSError) as error:
+            raise HomeAssistantError(f"Cannot read custom GIF: {error}") from error
+
+        async def operation():
+            await self.client.set("set_power", ["on", "smooth", 500])
+            await self.client.set("set_ps", ["mic_music_mode", '{"on":0}'])
+            # Mark ambiguity before touching the shared renderer, even if upload fails.
+            self.hass.config_entries.async_update_entry(
+                self.entry, options={**self.entry.options, OPT_CUSTOM_SLOT: True}
+            )
+            await self.client.upload(gif)
+            await self.client.set("set_fx_effect", [*GIF_EFFECT, 1, {}])
+            await asyncio.sleep(0.6)
+
+        await self._execute(
+            operation,
+            lambda state: state["power"] == "on"
+            and not state["music"].get("on")
+            and state["effect"][:2] == GIF_EFFECT,
+        )
+        self.hass.config_entries.async_update_entry(
+            self.entry, options={**self.entry.options, OPT_LAST_CUSTOM_GIF: name}
+        )
+        self.async_update_listeners()
 
     async def async_music(
         self, enabled: bool, effect: str | None = None, palette: str | None = None

@@ -12,10 +12,12 @@ from homeassistant.components import bluetooth
 from homeassistant.config_entries import ConfigFlow, OptionsFlowWithReload
 from homeassistant.const import CONF_ADDRESS
 from homeassistant.core import callback
+from homeassistant.helpers import selector
 
 from .client import CurtainClient
 from .const import DEFAULT_PERSISTENT_CONNECTION, DOMAIN, NAME_PREFIX, OPT_PERSISTENT_CONNECTION
 from .coordinator import ERRORS, connect
+from .custom_gif import OPT_CUSTOM_GIFS, OPT_LAST_CUSTOM_GIF, import_uploaded_gif
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -103,20 +105,57 @@ class CurtainOptionsFlow(OptionsFlowWithReload):
     """Choose connection lifetime without losing saved music preferences."""
 
     async def async_step_init(self, user_input=None):
+        errors = {}
         if user_input is not None:
-            return self.async_create_entry(
-                title="", data={**self.config_entry.options, **user_input}
+            name = user_input.get("gif_name", "").strip()
+            file_id = user_input.get("gif_file")
+            imported = None
+            if bool(name) != bool(file_id):
+                errors["base"] = "gif_name_and_file"
+            elif file_id:
+                try:
+                    imported = await self.hass.async_add_executor_job(
+                        import_uploaded_gif, self.hass, self.config_entry.entry_id, file_id, name
+                    )
+                except (ValueError, OSError):
+                    errors["base"] = "invalid_gif"
+            if not errors:
+                options = dict(self.config_entry.options)
+                library = dict(options.get(OPT_CUSTOM_GIFS, {}))
+                for removed in user_input.get("remove_gifs", []):
+                    library.pop(removed, None)
+                if imported is not None:
+                    previous = library.get(imported["name"], {})
+                    if (
+                        options.get(OPT_LAST_CUSTOM_GIF) == imported["name"]
+                        and previous.get("sha256") != imported["sha256"]
+                    ):
+                        options.pop(OPT_LAST_CUSTOM_GIF, None)
+                    library[imported["name"]] = imported
+                if library or OPT_CUSTOM_GIFS in options:
+                    options[OPT_CUSTOM_GIFS] = library
+                if options.get(OPT_LAST_CUSTOM_GIF) not in library:
+                    options.pop(OPT_LAST_CUSTOM_GIF, None)
+                options[OPT_PERSISTENT_CONNECTION] = user_input[OPT_PERSISTENT_CONNECTION]
+                return self.async_create_entry(title="", data=options)
+        fields = {
+            schema.Required(
+                OPT_PERSISTENT_CONNECTION,
+                default=self.config_entry.options.get(
+                    OPT_PERSISTENT_CONNECTION, DEFAULT_PERSISTENT_CONNECTION
+                ),
+            ): bool,
+            schema.Optional("gif_name"): selector.TextSelector(),
+            schema.Optional("gif_file"): selector.FileSelector(
+                selector.FileSelectorConfig(accept=".gif,image/gif")
+            ),
+        }
+        if library := self.config_entry.options.get(OPT_CUSTOM_GIFS):
+            fields[schema.Optional("remove_gifs")] = selector.SelectSelector(
+                selector.SelectSelectorConfig(options=list(library), multiple=True)
             )
         return self.async_show_form(
             step_id="init",
-            data_schema=schema.Schema(
-                {
-                    schema.Required(
-                        OPT_PERSISTENT_CONNECTION,
-                        default=self.config_entry.options.get(
-                            OPT_PERSISTENT_CONNECTION, DEFAULT_PERSISTENT_CONNECTION
-                        ),
-                    ): bool,
-                }
-            ),
+            data_schema=schema.Schema(fields),
+            errors=errors,
         )

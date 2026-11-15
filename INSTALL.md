@@ -48,6 +48,20 @@ default. Disable it to release the adapter/proxy slot after each command with
 readback and after each poll. Polling remains every 30 seconds. Saving reloads
 the integration automatically and keeps music preferences.
 
+## Custom GIF library
+
+In the same **Configure** dialog, enter a GIF name and choose a file. Use a
+19×25-pixel GIF with 1–48 frames and at most 128520 bytes. Save to import it;
+then choose it in the separate **GIF — last requested** entity to upload and play.
+Adding a file does not change the curtain until you select it for playback.
+Reusing a name replaces the file. Use **Remove from library** to delete entries.
+
+Files are stored in `yeelight_curtain_ble/<entry_id>/` inside the HA configuration
+directory, outside the HACS component. Back them up together with HA's configuration
+storage. Playback is experimental: arbitrary user GIFs have not been visually
+verified on hardware. The selector shows the last requested file, not its identity
+read from the curtain. See the README for protocol limitations and automation examples.
+
 ## Optional preset picker with icons
 
 Add this dashboard resource as a **JavaScript module**:

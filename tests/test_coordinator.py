@@ -1,6 +1,7 @@
 """Exercise HA entities with a simulated Bluetooth peripheral."""
 
 import json
+from pathlib import Path
 from types import MappingProxyType
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -247,3 +248,57 @@ async def test_connection_setting_loaded_and_music_preferences_preserve_it(coord
     await coordinator.async_music_preference(OPT_MUSIC_PALETTE, "Tranquil")
     assert coordinator.entry.options[OPT_PERSISTENT_CONNECTION] is False
     await reloaded.async_shutdown()
+
+
+async def test_custom_gif_upload_activation_and_identity_are_separate(coordinator, peripheral):
+    from custom_components.yeelight_curtain_ble.custom_gif import (
+        OPT_CUSTOM_GIFS,
+        OPT_LAST_CUSTOM_GIF,
+        gif_path,
+        validate_gif,
+    )
+    from custom_components.yeelight_curtain_ble.select import CustomGIFSelect
+
+    data = (Path(__file__).parents[1] / 'custom_components/yeelight_curtain_ble/presets/christmasTree.gif').read_bytes()
+    metadata = {"name": "My animation", **validate_gif(data)}
+    path = gif_path(coordinator.hass, coordinator.entry.entry_id, metadata["sha256"])
+    path.parent.mkdir(parents=True)
+    path.write_bytes(data)
+    object.__setattr__(coordinator.entry, "options", MappingProxyType({OPT_CUSTOM_GIFS: {"My animation": metadata}}))
+    coordinator.persistent_connection = False
+    await coordinator.async_music(True)
+    entity = CustomGIFSelect(coordinator)
+    assert entity.options == ["My animation"] and entity.current_option is None
+    await entity.async_select_option("My animation")
+    assert entity.current_option == "My animation"
+    assert entity.assumed_state and entity.extra_state_attributes["file_identity_readable"] is False
+    assert coordinator.data["power"] == "on" and coordinator.data["music"]["on"] == 0
+    assert coordinator.preset is None  # Never mislabel a custom upload as Christmas Tree.
+    assert not peripheral.is_connected
+    assert peripheral.file_packets[-1] == b"\x04"
+    assert coordinator.entry.options[OPT_LAST_CUSTOM_GIF] == "My animation"
+    await coordinator.async_light_on(None, "Christmas Tree")
+    assert coordinator.preset == "Christmas Tree"
+    assert entity.current_option is None  # Allow selecting the same GIF again after a preset.
+    assert entity.extra_state_attributes["last_requested"] == "My animation"
+    path.write_bytes(data[:-1])
+    before = len(peripheral.requests)
+    with pytest.raises(HomeAssistantError, match="Cannot read custom GIF"):
+        await entity.async_select_option("My animation")
+    assert len(peripheral.requests) == before  # Validation precedes every BLE command.
+
+
+async def test_failed_custom_transfer_never_activates_or_updates_last_request(coordinator, peripheral):
+    from custom_components.yeelight_curtain_ble.custom_gif import (
+        OPT_CUSTOM_GIFS,
+        OPT_LAST_CUSTOM_GIF,
+    )
+
+    object.__setattr__(coordinator.entry, "options", MappingProxyType({OPT_CUSTOM_GIFS: {"New": {"sha256": "a" * 64}}, OPT_LAST_CUSTOM_GIF: "Old"}))
+    coordinator.client.upload = AsyncMock(side_effect=TimeoutError())
+    with patch("custom_components.yeelight_curtain_ble.coordinator.read_custom_gif", return_value=b"GIF89a;"):
+        with pytest.raises(HomeAssistantError):
+            await coordinator.async_custom_gif("New")
+    assert not any(r["method"] == "set_fx_effect" for r in peripheral.requests)
+    assert coordinator.entry.options[OPT_LAST_CUSTOM_GIF] == "Old"
+    assert not peripheral.is_connected

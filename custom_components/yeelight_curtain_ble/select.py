@@ -3,6 +3,7 @@
 from homeassistant.components.select import SelectEntity
 
 from .const import OPT_MUSIC_EFFECT, OPT_MUSIC_PALETTE
+from .custom_gif import GIF_EFFECT, OPT_CUSTOM_GIFS, OPT_CUSTOM_SLOT, OPT_LAST_CUSTOM_GIF
 from .entity import CurtainEntity
 
 PARALLEL_UPDATES = 0
@@ -10,13 +11,14 @@ PARALLEL_UPDATES = 0
 
 async def async_setup_entry(hass, entry, async_add_entities):
     coordinator = entry.runtime_data
-    async_add_entities(
-        [
-            PresetSelect(coordinator),
-            MusicSelect(coordinator, OPT_MUSIC_EFFECT, list(coordinator.catalog["music_effects"])),
-            MusicSelect(coordinator, OPT_MUSIC_PALETTE, list(coordinator.catalog["palettes"])),
-        ]
-    )
+    entities = [
+        PresetSelect(coordinator),
+        MusicSelect(coordinator, OPT_MUSIC_EFFECT, list(coordinator.catalog["music_effects"])),
+        MusicSelect(coordinator, OPT_MUSIC_PALETTE, list(coordinator.catalog["palettes"])),
+    ]
+    if coordinator.entry.options.get(OPT_CUSTOM_GIFS):
+        entities.append(CustomGIFSelect(coordinator))
+    async_add_entities(entities)
 
 
 class PresetSelect(CurtainEntity, SelectEntity):
@@ -56,3 +58,38 @@ class MusicSelect(CurtainEntity, SelectEntity):
 
     async def async_select_option(self, option):
         await self.coordinator.async_music_preference(self._key, option)
+
+
+class CustomGIFSelect(CurtainEntity, SelectEntity):
+    """Play a private GIF; the value is explicitly the last requested file."""
+
+    _attr_translation_key = "custom_gif"
+    _attr_icon = "mdi:image-multiple-outline"
+    _attr_assumed_state = True
+
+    def __init__(self, coordinator):
+        super().__init__(coordinator, "custom_gif")
+        self._attr_options = list(coordinator.entry.options.get(OPT_CUSTOM_GIFS, {}))
+
+    @property
+    def current_option(self):
+        state = self.coordinator.data
+        if (
+            not state
+            or state["music"].get("on")
+            or state["effect"][:2] != GIF_EFFECT
+            or not self.coordinator.entry.options.get(OPT_CUSTOM_SLOT)
+        ):
+            return None
+        return self.coordinator.entry.options.get(OPT_LAST_CUSTOM_GIF)
+
+    @property
+    def extra_state_attributes(self):
+        return {
+            "file_identity_readable": False,
+            "state_is_last_request": True,
+            "last_requested": self.coordinator.entry.options.get(OPT_LAST_CUSTOM_GIF),
+        }
+
+    async def async_select_option(self, option):
+        await self.coordinator.async_custom_gif(option)

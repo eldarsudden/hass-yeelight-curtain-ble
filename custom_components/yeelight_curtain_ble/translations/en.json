@@ -39,18 +39,28 @@
       },
       "music_palette": {
         "name": "Music palette"
+      },
+      "custom_gif": {
+        "name": "GIF — last requested"
       }
     }
   },
   "options": {
     "step": {
       "init": {
-        "title": "BLE connection settings",
-        "description": "A persistent connection occupies a Bluetooth adapter or proxy slot. When disabled, disconnect after each command and its readback, and after each poll. Polling continues every 30 seconds; commands may take longer. Device notifications are only received while connected. Saving automatically reloads the integration.",
+        "title": "Connection and custom GIFs",
+        "description": "A persistent connection occupies a Bluetooth adapter or proxy slot. When disabled, disconnect after each command and its readback, and after each poll. Polling continues every 30 seconds; commands may take longer. Device notifications are only received while connected. Saving automatically reloads the integration. To add a GIF, enter its name and choose a file: 19×25 pixels, at most 48 frames and 128520 bytes. Saving only imports it into the library; use the separate GIF selector to play it. Reusing a name replaces its file. Custom GIF playback is experimental and has not been visually verified on hardware.",
         "data": {
-          "persistent_connection": "Persistent BLE connection"
+          "persistent_connection": "Persistent BLE connection",
+          "gif_name": "GIF name",
+          "gif_file": "GIF file",
+          "remove_gifs": "Remove from library"
         }
       }
+    },
+    "error": {
+      "gif_name_and_file": "Enter both a GIF name and a GIF file.",
+      "invalid_gif": "Could not import the GIF. Choose the file again: use a valid 19×25 GIF with at most 48 frames and 128520 bytes, and a name of 1–64 characters."
     }
   }
 }

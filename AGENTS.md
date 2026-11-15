@@ -45,6 +45,8 @@ documentation. Do not claim support for other models or HA versions without test
 - `light.py`, `switch.py`, `select.py`: HA entities.
 - `protocol.py`: JSON and file-block encoding.
 - `catalog.json`, `presets/`: effect catalog, music palettes and 16 GIFs.
+- `custom_gif.py`: native upload consumption, bounded decoding, private per-entry
+  content-addressed storage and cleanup. Pillow is supplied by HA Core.
 - `frontend.py`, `www/`: exact public static routes and optional presets card.
 - `brand/`: original curtain artwork for the integration. Do not replace it with
   the Yeelight app logo. `www/curtain.png` is the same artwork for the card and light.
@@ -99,6 +101,34 @@ Each regular preset's semantic MDI icon lives in `catalog.json`. The Preset
 entity shows the confirmed animation's icon, or a generic animation icon for
 Music Mode or an unknown preset. Preserve option values and preset names: users
 may already depend on them in automations.
+
+## Custom GIF library
+
+Options store library metadata under `custom_gifs`; bytes live in
+`config/yeelight_curtain_ble/<entry_id>/<sha256>.gif`, outside the installed
+component and public static routes. Consume uploads through HA's
+`process_uploaded_file` in the executor. Never accept arbitrary paths or URLs.
+Validate both import and playback: GIF format, 19×25 dimensions, at most 48
+fully decoded frames, trailer, SHA-256 and maximum 128520 bytes. These are
+conservative implementation limits, not claims about all firmware capabilities.
+Save files atomically; after options reload, remove only unused managed hashes.
+
+Imports only change the library. A separate `CustomGIFSelect` triggers playback;
+its explicitly named state is the last successful request while the numeric
+marker is compatible, not a read file identity. Clear its displayed choice for
+regular presets and Music Mode so the same GIF can be selected again; retain the
+last request as an attribute.
+Use standard `select.select_option` for automation. Preserve unrelated preferences
+when saving options, including changes made while a form is open.
+
+No independent custom slot is confirmed. Custom playback reuses the observed
+`set_fx_effect [71, 1007, 1, {}]` GIF marker after transfer. Persist the
+`custom_gif_slot` ambiguity flag before transfer, so the regular Preset entity
+cannot mistake an uploaded file for Christmas Tree, including after reload.
+Restore that regular label only after its original bundled file is uploaded.
+Do not claim numeric state readback verifies a filename, hash or visual rendering.
+Treat arbitrary custom GIF playback as experimental until hardware confirmation.
+Do not overwrite bundled files or mix custom library names into regular/music lists.
 
 ## Optional dashboard card
 

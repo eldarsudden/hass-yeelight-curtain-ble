@@ -105,7 +105,8 @@ client that may connect to the curtain.
 
 ## Controls
 
-Five entities appear on the device page:
+Five standard entities appear on the device page. Importing a custom GIF also
+adds a separate GIF selector:
 
 | Entity | Controls |
 | --- | --- |
@@ -163,6 +164,64 @@ All card assets are served by your HA instance; no external scripts are loaded.
 
 The curtain artwork remains the integration icon and the light's picture.
 
+## Custom GIFs
+
+Import your own animations from **Settings → Devices & services → Yeelight
+Curtain BLE → Configure**:
+
+1. Enter a **GIF name** and choose a **GIF file** from your computer or phone.
+2. Save. The file is validated and added to this curtain's library; importing does
+   not send commands to the curtain. The integration reloads automatically.
+3. Choose the animation in **GIF — last requested** on the device page to upload
+   and play it. This turns on the light and stops Music Mode.
+
+Repeat to add more animations. Reusing a name replaces its file. To remove
+animations, select them under **Remove from library** in the same dialog and save.
+Files are stored privately under your HA configuration directory in
+`yeelight_curtain_ble/<entry_id>/`, outside the installed component. HACS updates
+preserve them. Include this directory and HA's configuration storage in backups.
+The library is separate for each curtain and is not served as public web content.
+
+For this first version, prepare a GIF with:
+
+- **19 pixels wide × 25 pixels high**, matching the captured single-curtain files.
+- **1–48 frames**, with a maximum file size of **128520 bytes** (255 protocol blocks).
+- A valid GIF file, including decodable frames and the closing trailer.
+
+These are conservative integration limits based on our captures and current
+transport, not a complete specification of the firmware. Files are checked during
+import and before playback. Resizing, cropping and GIF conversion are not included.
+Large-packet BLE support is still required: MTU 512 and 509-byte writes.
+
+Use the standard select action in automations; it also works to replay the same file:
+
+```yaml
+action: select.select_option
+target:
+  entity_id: select.your_curtain_gif_last_requested
+data:
+  option: My animation
+```
+
+Replace the entity ID and name with your own. The ordinary 19 presets and their
+icon picker remain separate from the custom GIF library and music settings.
+
+**Experimental playback:** transfer and activation use the observed GIF renderer
+command, sharing the numeric marker used by Christmas Tree. A separate custom
+firmware slot has not been confirmed. Choosing the normal Christmas Tree preset
+uploads its original bundled animation again. No bundled file is modified.
+
+The firmware returns a numeric effect marker, not the GIF filename or hash.
+**GIF — last requested** therefore shows the last successfully requested library
+item while the effect marker is compatible, not a device-read file identity or
+proof that it is still playing. When a regular preset or Music Mode is selected,
+the GIF selection becomes unknown so you can choose the same file again; its
+`last_requested` attribute retains the previous choice. While
+the shared marker may represent a custom upload, the regular Preset entity does
+not incorrectly label it Christmas Tree. Transfer acknowledgments and state
+readback are checked, but arbitrary custom GIF rendering has not yet been visually
+verified on hardware.
+
 ## Limitations
 
 **Bonfire, Rainbow and Starry sky** are built into the curtain. The other 16
@@ -171,8 +230,8 @@ Uploads require large BLE packets: **ATT MTU 512** and support for 509-byte writ
 on the adapter or proxy. If a GIF upload fails, check that connection's
 capabilities. Power, brightness, built-in effects and Music Mode do not need GIF uploads.
 
-Pure Color Mode, custom images, grouping multiple curtains and firmware updates
-are not implemented. Rainbow, the Christmas Tree GIF transfer and switching all
+Pure Color Mode, importing non-GIF images, grouping multiple curtains and firmware
+updates are not implemented. Rainbow, the Christmas Tree GIF transfer and switching all
 six music effects with the Tranquil palette were tested on the device. Other
 presets and palettes were reconstructed from app recordings and have not been
 individually tested with the new client. Visual response to sound was not assessed.

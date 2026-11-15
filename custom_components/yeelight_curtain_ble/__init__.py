@@ -5,6 +5,7 @@ from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 
 from .coordinator import CurtainCoordinator, load_catalog
+from .custom_gif import OPT_CUSTOM_GIFS, cleanup_library
 from .frontend import async_setup_frontend
 
 PLATFORMS = [Platform.LIGHT, Platform.SWITCH, Platform.SELECT]
@@ -17,6 +18,9 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    await hass.async_add_executor_job(
+        cleanup_library, hass, entry.entry_id, entry.options.get(OPT_CUSTOM_GIFS, {})
+    )
     catalog = await hass.async_add_executor_job(load_catalog)
     coordinator = CurtainCoordinator(hass, entry, catalog)
     try:
