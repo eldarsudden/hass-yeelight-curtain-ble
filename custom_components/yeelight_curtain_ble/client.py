@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -12,6 +13,8 @@ from bleak.exc import BleakError
 
 from .const import FILE_NOTIFY, FILE_WRITE, JSON_NOTIFY, JSON_WRITE, MOUNTING_SIDES
 from .protocol import FILE_ACK, encode_request, gif_upload_packets
+
+_LOGGER = logging.getLogger(__name__)
 
 
 class CurtainError(Exception):
@@ -101,14 +104,28 @@ class CurtainClient:
         return client
 
     async def disconnect(self) -> None:
-        client, self._client = self._client, None
+        client = self._client
         self._file_subscribed = False
         self._fail_pending()
-        if client is not None:
-            try:
-                await asyncio.wait_for(client.disconnect(), self._timeout)
-            except (BleakError, TimeoutError):
-                pass
+        if client is None:
+            return
+        try:
+            await asyncio.wait_for(client.disconnect(), self._timeout)
+        except (BleakError, TimeoutError) as err:
+            if client.is_connected:
+                _LOGGER.warning(
+                    "BLE disconnect failed; keeping the existing client to avoid opening a duplicate connection: %s",
+                    err,
+                )
+                return
+            _LOGGER.debug("BLE disconnect returned an error after the link closed: %s", err)
+        if client.is_connected:
+            _LOGGER.warning(
+                "BLE disconnect returned while the client is still connected; retaining the client"
+            )
+            return
+        if self._client is client:
+            self._client = None
 
     async def request(self, method: str, params: list) -> list:
         async with self._lock:

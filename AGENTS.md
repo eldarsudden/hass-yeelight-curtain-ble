@@ -85,8 +85,10 @@ The options flow reloads the entry when saved; music preference updates must not
 trigger reloads or overwrite this option. Preserve current preferences when
 submitting the options form. Serialize all operations,
 including state reads and GIF uploads. On disconnect, fail pending requests;
-a stale client's callback must not reset a newer session. Do not automatically
-retry state-changing commands.
+a stale client's callback must not reset a newer session. If disconnect times out
+or the client still reports connected, retain that client and log a warning so
+the next operation reuses it instead of opening a duplicate connection. Do not
+automatically retry state-changing commands.
 
 Verify the response and actual state after a command. Do not replace observed
 state with the requested value. Current behavior uses readback after changes,

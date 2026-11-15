@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.6.1 — 2026-11-15
+
+- Keep the BLE client reference if disconnect times out or the client still
+  reports a live connection. Later operations reuse that client instead of
+  opening another connection and potentially consuming another proxy slot.
+- Log disconnect failures and clients that remain connected, making proxy
+  disconnect problems visible in the Home Assistant log.
+
 ## 0.6.0 — 2026-11-15
 
 - Add local initial setup without a Yeelight account or app. New and reset curtains
