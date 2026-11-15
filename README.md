@@ -3,6 +3,9 @@
 Управление гирляндой **Yeelight Curtain Lights YLYDD-0053** из Home Assistant
 по Bluetooth — через адаптер сервера или ESPHome Bluetooth Proxy.
 
+[![Добавить в HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=eldarsudden&repository=hass-yeelight-curtain-ble&category=integration)
+[![Настроить интеграцию в Home Assistant](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=yeelight_curtain_ble)
+
 Интеграция добавляет:
 
 - включение, выключение и регулировку яркости;
@@ -27,6 +30,13 @@ BLE-клиенты, например тестовый скрипт на ноут
 пока не поддерживается.
 
 ## Установка через HACS
+
+Нажмите **первую кнопку** выше, чтобы открыть репозиторий в своём HACS.
+Скачайте интеграцию и перезапустите HA, затем нажмите **вторую кнопку**,
+чтобы настроить гирлянду. Если My Home Assistant попросит адрес вашего HA,
+укажите его. HACS должен быть уже установлен.
+
+Можно также добавить репозиторий через меню:
 
 1. В HACS откройте **⋮ → Custom repositories / Пользовательские репозитории**.
 2. Добавьте адрес `https://github.com/eldarsudden/hass-yeelight-curtain-ble`

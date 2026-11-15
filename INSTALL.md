@@ -6,6 +6,12 @@
 
 ## Через HACS
 
+[![Добавить в HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=eldarsudden&repository=hass-yeelight-curtain-ble&category=integration)
+
+Кнопка открывает репозиторий в вашем HACS. Скачайте интеграцию и перезапустите
+HA. Если HACS ещё не установлен, сначала установите его.
+Добавить репозиторий можно и через меню:
+
 1. Откройте **HACS → ⋮ → Custom repositories / Пользовательские репозитории**.
 2. Добавьте `https://github.com/eldarsudden/hass-yeelight-curtain-ble`, тип **Integration**.
 3. Скачайте **Yeelight Curtain BLE** и перезапустите HA.
@@ -28,6 +34,10 @@
 только читает состояние. YAML для самой интеграции не нужен.
 Не сбрасывайте гирлянду ради установки: первичная настройка после сброса
 пока не поддерживается.
+
+После установки и перезапуска HA настройку можно открыть кнопкой:
+
+[![Настроить интеграцию в Home Assistant](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=yeelight_curtain_ble)
 
 Настройка ESPHome, управление и ограничения описаны в
 [README репозитория](https://github.com/eldarsudden/hass-yeelight-curtain-ble#readme).
