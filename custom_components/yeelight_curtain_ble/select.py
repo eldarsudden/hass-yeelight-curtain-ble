@@ -32,6 +32,11 @@ class PresetSelect(CurtainEntity, SelectEntity):
     def current_option(self):
         return self.coordinator.preset
 
+    @property
+    def icon(self):
+        preset = self.coordinator.presets.get(self.current_option)
+        return preset["icon"] if preset is not None else "mdi:animation-play-outline"
+
     async def async_select_option(self, option):
         await self.coordinator.async_light_on(None, option)
 
