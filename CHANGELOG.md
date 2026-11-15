@@ -18,6 +18,10 @@
   stale-session notifications and register cleanup on Home Assistant stop.
 - Add regression coverage for late callbacks, queued commands, cancellation,
   partial setup and disconnect failures that falsely report a closed local link.
+- Verify nine real on-demand sessions over Mac Bluetooth: initial read, red at
+  10/50/100%, green, blue, Rainbow, power off and restoration. All nine backends
+  reported disconnected. Observed advertisements were identical across those
+  brightness/color changes, so passive reception cannot replace full state reads.
 
 These changes address integration-side resource leaks; they cannot prove that
 a proxy released a slot when its backend reports success incorrectly. Existing

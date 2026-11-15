@@ -126,6 +126,17 @@ release, delayed and cancelled cleanup, incomplete setup, per-address ownership,
 internal connector retries, HA stop and stale callbacks. These are simulated
 backend tests, not physical ESPHome slot-allocation verification.
 
+A later live 0.6.2 experiment over Mac Bluetooth verified nine on-demand sessions
+(initial read, red 50/10/100%, green, blue, Rainbow, power off and restoration).
+All nine backends reported disconnected after cleanup. Manufacturer/service-data
+payloads were identical for all five color/brightness cases, while Rainbow
+changed the manufacturer payload. No advertisements were received during the
+8-second power-off sampling window: do not infer an off-state format from it.
+The original power on, brightness 50% and Bounce were restored; the user permitted
+changing the unreadable music palette, and Tranquil was sent. This test exercises
+the actual client/coordinator with a direct Mac connector, not a real HA/proxy.
+Private scripts/reports remain outside the public export.
+
 Verify the response and actual state after a command. Do not replace observed
 state with the requested value. Current behavior uses readback after changes,
 notifications and polling every 30 seconds. An update failure makes entities

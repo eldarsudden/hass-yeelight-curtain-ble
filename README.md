@@ -143,6 +143,10 @@ clear a slot already orphaned inside a proxy. Disable this integration, restart
 the affected proxy, then re-enable the integration to clear existing orphaned
 slots. This also interrupts other BLE devices using that proxy.
 
+On-demand control and repeated disconnect/reconnect were verified on a real
+curtain over Mac Bluetooth with version 0.6.2. Actual Home Assistant/ESPHome
+slot release still needs hardware verification.
+
 ## Controls
 
 Six standard entities appear on the device page. Importing a custom GIF also
