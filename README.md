@@ -1,68 +1,70 @@
 # Yeelight Curtain BLE
 
-Управление гирляндой **Yeelight Curtain Lights YLYDD-0053** из Home Assistant
-по Bluetooth — через адаптер сервера или ESPHome Bluetooth Proxy.
+Control **Yeelight Curtain Lights YLYDD-0053** from Home Assistant over Bluetooth,
+using a local adapter or an ESPHome Bluetooth Proxy.
 
-[![Добавить в HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=eldarsudden&repository=hass-yeelight-curtain-ble&category=integration)
-[![Настроить интеграцию в Home Assistant](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=yeelight_curtain_ble)
+[![Add to HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=eldarsudden&repository=hass-yeelight-curtain-ble&category=integration)
+[![Set up in Home Assistant](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=yeelight_curtain_ble)
 
-Интеграция добавляет:
+The integration provides:
 
-- включение, выключение и регулировку яркости;
-- 19 обычных эффектов;
-- музыкальный режим с микрофоном гирлянды, 6 эффектами и 40 палитрами.
+- Power and brightness controls.
+- 19 regular animation presets, with an optional dashboard picker showing an icon beside every preset.
+- Music Mode using the curtain's microphone, with 6 effects and 40 palettes.
 
-**Это экспериментальная версия.** После заводского сброса с Mac проверены
-локальное подключение, питание, яркость, два обычных пресета и шесть музыкальных
-эффектов. Приложение Yeelight для этого не потребовалось. Работа через Home Assistant
-и ESPHome proxy ещё требует проверки. Поддерживается модель YLYDD-0053
-(16787461); другие модели не проверялись.
+**Experimental support.** After a factory reset, direct control from a Mac was
+verified for connection, power, brightness, two regular presets and all six music
+effects, without the Yeelight app. Operation through Home Assistant and an
+ESPHome proxy still needs hardware verification. Only YLYDD-0053 (product ID
+16787461) has been tested.
 
-## Что понадобится
+## Requirements
 
-- Home Assistant **2026.11.0 или новее**. Проверки разработки выполнены на 2026.11.1.
-- Настроенный Bluetooth в HA: локальный адаптер или ESPHome proxy
-  с активными соединениями и свободным слотом подключения.
-- Гирлянда YLYDD-0053 в зоне действия Bluetooth.
+- **Home Assistant 2026.11.0 or later.** Development checks use 2026.11.1.
+- Bluetooth configured in HA: a local adapter or an ESPHome proxy with active
+  connections enabled and a free connection slot.
+- A YLYDD-0053 curtain within Bluetooth range.
 
-Перед подключением закройте Yeelight на телефоне и отключите другие
-BLE-клиенты, например тестовый скрипт на ноутбуке. Сбрасывать рабочую гирлянду
-ради установки не требуется. На нашем экземпляре после заводского сброса
-BLE-команды доступны сразу, без привязки через приложение или аккаунта Yeelight.
-Повторное подключение после отключения и включения питания также проверено.
+Close the Yeelight app and disconnect other BLE clients, such as a laptop test
+script, before connecting. You do not need to reset a working curtain to install
+this integration. On the tested unit, local commands worked immediately after a
+factory reset, without a Yeelight account or app setup. Reconnection after
+unplugging and reconnecting power was also verified.
 
-## Установка через HACS
+## Install with HACS
 
-Нажмите **первую кнопку** выше, чтобы открыть репозиторий в своём HACS.
-Скачайте интеграцию и перезапустите HA, затем нажмите **вторую кнопку**,
-чтобы настроить гирлянду. Если My Home Assistant попросит адрес вашего HA,
-укажите его. HACS должен быть уже установлен.
+Use the **first button** above to open the repository in your HACS installation.
+Download the integration and restart HA, then use the **second button** to set up
+the curtain. If My Home Assistant asks for your HA URL, enter it. HACS must
+already be installed.
 
-Можно также добавить репозиторий через меню:
+You can also add the repository manually:
 
-1. В HACS откройте **⋮ → Custom repositories / Пользовательские репозитории**.
-2. Добавьте адрес `https://github.com/eldarsudden/hass-yeelight-curtain-ble`
-   и выберите тип **Integration**.
-3. Найдите **Yeelight Curtain BLE**, скачайте интеграцию и перезапустите Home Assistant.
-4. Откройте **Настройки → Устройства и службы → Добавить интеграцию**
-   и выберите **Yeelight Curtain BLE**. Если гирлянда уже обнаружена,
-   нажмите **Настроить** на её карточке.
-5. Выберите гирлянду и подтвердите проверку связи.
+1. Open **HACS → ⋮ → Custom repositories**.
+2. Add `https://github.com/eldarsudden/hass-yeelight-curtain-ble` and select **Integration**.
+3. Find **Yeelight Curtain BLE**, download it and restart Home Assistant.
+4. Open **Settings → Devices & services → Add integration** and choose
+   **Yeelight Curtain BLE**. If the curtain has already been discovered, choose
+   **Configure** on its discovery card instead.
+5. Select the curtain and confirm the connection check.
 
-При настройке интеграция только читает состояние. YAML для неё не нужен.
-Установка без HACS описана в [INSTALL.md](INSTALL.md).
+Setup only reads the device state. No integration YAML is required.
+For installation without HACS, see [INSTALL.md](INSTALL.md).
 
-## Обновления
+## Updates
 
-Опубликованные версии и изменения доступны в [Releases](https://github.com/eldarsudden/hass-yeelight-curtain-ble/releases)
-и [истории изменений](CHANGELOG.md). Устанавливайте обновления через HACS,
-затем перезапускайте Home Assistant. Ветка `main` используется для разработки;
-для установки предлагаются опубликованные релизы.
+Published versions and their changes are available in
+[Releases](https://github.com/eldarsudden/hass-yeelight-curtain-ble/releases) and the
+[changelog](CHANGELOG.md). Update through HACS and restart Home Assistant.
+The `main` branch is used for development; published releases are offered for installation.
 
-## Подключение через ESPHome
+If you use the optional presets card, update the version in its resource URL
+and reload your dashboard after upgrading.
 
-Добавьте к конфигурации своего ESP32 proxy следующие параметры,
-если они ещё не включены:
+## ESPHome connection
+
+Include the following in your ESP32 proxy configuration if these options are
+not already enabled:
 
 ```yaml
 esp32_ble_tracker:
@@ -71,61 +73,95 @@ bluetooth_proxy:
   active: true
 ```
 
-Это часть конфигурации, а не полная прошивка.
-В HA должны быть настроены интеграции Bluetooth и ESPHome.
-IP-адрес proxy указывать не нужно: HA сам выбирает доступный адаптер.
-Гирлянда занимает один слот соединения постоянно, пока интеграция подключена.
+This is a configuration fragment, not a complete firmware configuration.
+Both the Bluetooth and ESPHome integrations must be configured in HA.
+You do not need to enter the proxy's IP address: HA chooses an available adapter.
+The curtain occupies one connection slot while the integration is connected.
 
-## Как пользоваться
+## Controls
 
-На странице устройства появятся пять сущностей:
+Five entities appear on the device page:
 
-| Сущность | Управление |
+| Entity | Controls |
 | --- | --- |
-| Светильник | Питание, яркость 1–100%, обычные эффекты |
-| Пресет | Отдельный список 19 обычных анимаций: Christmas Tree, Rainbow, Bonfire и другие |
-| Музыкальный режим | Реакция на звук через микрофон гирлянды |
-| Музыкальный эффект | Sound Wave, Shine, Spectrum, Converge, Bounce, Breath |
-| Музыкальная палитра | Выбор одной из 40 палитр |
+| Light | Power, brightness from 1–100%, regular effects |
+| Preset | A separate list of 19 regular animations, including Christmas Tree, Rainbow and Bonfire |
+| Music Mode | Sound response using the curtain's microphone |
+| Music effect | Sound Wave, Shine, Spectrum, Converge, Bounce, Breath |
+| Music palette | One of 40 palettes |
 
-Для музыки сначала включите свет, затем музыкальный режим. Выбор обычного
-эффекта выключает музыку. Передача звука с микрофона телефона не поддерживается.
+For music, turn on the light first, then enable Music Mode. Choosing a regular
+effect stops Music Mode. Streaming audio from the phone's microphone is not supported.
 
-Список **Пресет** работает независимо от музыкальных настроек: выбор включает
-свет и запускает обычную анимацию. Она также доступна в эффектах светильника.
-Во время Music Mode обычный пресет не показывается как активный.
-Значок списка меняется по выбранной анимации: ёлка, радуга, костёр и другие.
-В стандартном выпадающем меню HA значки у отдельных строк не отображаются.
+The **Preset** list is independent of music settings. Choosing a preset turns on
+the light and starts that animation. The same animations are available in the
+light's effect selector. During Music Mode, no regular preset is shown as active.
+The Preset entity's icon follows the confirmed animation.
 
-При выключенной музыке выбор эффекта и палитры сохраняется до следующего
-включения режима. При включённой музыке изменения применяются сразу.
-Палитра показывает сохранённый выбор: прочитать текущую палитру с гирлянды
-пока нельзя. Начальный выбор — **Bounce / Father's Day**.
+With Music Mode off, effect and palette changes are saved for the next time you
+enable it. With Music Mode on, changes apply immediately. The palette shows the
+saved preference: its current colors cannot be read from the curtain.
+The initial music selection is **Bounce / Father's Day**.
 
-## Какие есть ограничения
+## Preset picker with icons
 
-**Bonfire, Rainbow и Starry sky** встроены в гирлянду. Для остальных 16 обычных
-эффектов интеграция сначала передаёт файл анимации; файлы уже включены в поставку.
-Их загрузка требует поддержки больших BLE-пакетов (MTU 512) адаптером или proxy.
-Если появится ошибка загрузки GIF, совместимость этого соединения нужно проверить.
-Питание, яркость, встроенные эффекты и музыка загрузки GIF не требуют.
+The included dashboard card displays a semantic icon **beside each of the 19
+options** in its dropdown. It uses the regular Preset entity and the same HA
+commands as the standard controls. The standard HA entity dropdown continues
+to show text options.
 
-Не реализованы Pure Color Mode, собственные изображения, объединение нескольких
-гирлянд и обновление прошивки. На устройстве проверены Rainbow, передача GIF
-Christmas Tree и переключение шести музыкальных эффектов с палитрой Tranquil.
-Остальные пресеты и палитры восстановлены по записи приложения, но новым
-клиентом отдельно ещё не проверены. Реакция на звук визуально не оценивалась.
+After installing or updating the integration and restarting HA:
 
-## Если гирлянда не подключается
+1. Add a dashboard resource with this URL and resource type **JavaScript module**:
 
-1. Закройте Yeelight и другие приложения, которые могут держать BLE-соединение.
-2. Проверьте, что адаптер или proxy видит устройство с именем `YLBT_CURT_…`.
-3. Для ESPHome проверьте `active: true` и наличие свободного слота соединения.
-4. Подождите следующей проверки связи — она выполняется каждые 30 секунд.
+   ```text
+   /yeelight_curtain_ble/yeelight-curtain-presets.js?v=0.2.0
+   ```
 
-Если проблема повторяется, [создайте issue](https://github.com/eldarsudden/hass-yeelight-curtain-ble/issues)
-и укажите версию HA, модель proxy или адаптера, действие и текст ошибки.
-Для подробного журнала добавьте к существующей настройке `logger`:
+   For dashboards managed through the UI, open **Settings → Dashboards → ⋮ →
+   Resources**. Enable Advanced mode in your user profile if this menu is hidden.
+   If you manage resources in YAML, add the URL under `lovelace.resources` with
+   `type: module` instead.
+
+2. Add **Yeelight Curtain Presets** from the dashboard card picker, or use:
+
+   ```yaml
+   type: custom:yeelight-curtain-presets-card
+   entity: select.your_curtain_preset
+   title: Presets
+   ```
+
+Replace `select.your_curtain_preset` with your curtain's **regular Preset** entity,
+not Music effect or Music palette. `title` is optional. The card follows the HA
+interface language, with English as the default and Russian also available.
+All card assets are served by your HA instance; no external scripts are loaded.
+
+The curtain artwork remains the integration icon and the light's picture.
+
+## Limitations
+
+**Bonfire, Rainbow and Starry sky** are built into the curtain. The other 16
+regular presets require an animation file upload; all files are included.
+Uploads require large BLE packets: **ATT MTU 512** and support for 509-byte writes
+on the adapter or proxy. If a GIF upload fails, check that connection's
+capabilities. Power, brightness, built-in effects and Music Mode do not need GIF uploads.
+
+Pure Color Mode, custom images, grouping multiple curtains and firmware updates
+are not implemented. Rainbow, the Christmas Tree GIF transfer and switching all
+six music effects with the Tranquil palette were tested on the device. Other
+presets and palettes were reconstructed from app recordings and have not been
+individually tested with the new client. Visual response to sound was not assessed.
+
+## Troubleshooting
+
+1. Close Yeelight and other apps that might hold the BLE connection.
+2. Check that the adapter or proxy can see a device named `YLBT_CURT_…`.
+3. For ESPHome, check `active: true` and a free connection slot.
+4. Wait for the next connection check, which runs every 30 seconds.
+
+If the problem persists, [open an issue](https://github.com/eldarsudden/hass-yeelight-curtain-ble/issues)
+with your HA version, proxy or adapter model, attempted action and error message.
+For detailed logs, merge the following into your existing `logger` configuration:
 
 ```yaml
 logger:
@@ -134,4 +170,5 @@ logger:
     bleak_retry_connector: debug
 ```
 
-Информация о протоколе, разработке, тестах и сборке находится в [AGENTS.md](AGENTS.md).
+Protocol details, development instructions, tests and packaging are documented
+in [AGENTS.md](AGENTS.md).

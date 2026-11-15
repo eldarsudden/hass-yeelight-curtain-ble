@@ -32,7 +32,7 @@ async def test_home_assistant_loads_manifest_and_platforms():
     integration = await loader.async_get_integration(hass, DOMAIN)
     manifest = json.loads((Path(__file__).parents[1] / "custom_components" / DOMAIN / "manifest.json").read_text())
     assert integration.version == manifest["version"]
-    assert integration.dependencies == ["bluetooth"]
+    assert integration.dependencies == ["bluetooth", "frontend"]
     assert await integration.async_get_component()
     for platform in ("config_flow", "light", "switch", "select"):
         assert await integration.async_get_platform(platform)

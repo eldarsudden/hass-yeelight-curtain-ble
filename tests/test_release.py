@@ -45,7 +45,7 @@ class ReleaseTests(unittest.TestCase):
         self.assertFalse((self.root / "dist").exists())
 
     def test_archive_contains_assets_but_no_research_data(self):
-        for name in ("presets/tree.gif", "brand/icon.png", "translations/ru.json", "client.py"):
+        for name in ("presets/tree.gif", "brand/icon.png", "translations/ru.json", "client.py", "www/card.js"):
             target = self.component / name
             target.parent.mkdir(exist_ok=True)
             target.write_bytes(b"bundled asset")
@@ -62,6 +62,7 @@ class ReleaseTests(unittest.TestCase):
                     for name in (
                         "manifest.json", "presets/tree.gif", "brand/icon.png",
                         "translations/ru.json", "client.py",
+                        "www/card.js",
                     )
                 },
             )

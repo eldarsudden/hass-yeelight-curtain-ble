@@ -28,12 +28,13 @@ def main():
         ROOT / "tools/build_release.py",
         ROOT / "tools/prepare_hacs_repo.py",
         ROOT / ".github/workflows/release.yml",
+        ROOT / ".github/workflows/release-notes.yml",
     ]
     for folder in (ROOT / "custom_components/yeelight_curtain_ble", ROOT / "tests"):
         files += [
             p
             for p in folder.rglob("*")
-            if p.is_file() and p.suffix in (".py", ".json", ".gif", ".png")
+            if p.is_file() and p.suffix in (".py", ".json", ".gif", ".png", ".js")
         ]
     for path in sorted(files):
         target = OUTPUT / path.relative_to(ROOT)

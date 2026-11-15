@@ -34,7 +34,7 @@ def build_release(tag: str | None = None) -> Path:
     files = [ROOT / "INSTALL.md"] + sorted(
         p
         for p in COMPONENT.rglob("*")
-        if p.is_file() and p.suffix in (".py", ".json", ".gif", ".png")
+        if p.is_file() and p.suffix in (".py", ".json", ".gif", ".png", ".js")
     )
     with ZipFile(output, "w", compression=ZIP_DEFLATED) as archive:
         for path in files:

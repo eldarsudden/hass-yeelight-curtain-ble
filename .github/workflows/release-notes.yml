@@ -1,0 +1,52 @@
+name: Release notes
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - CHANGELOG.md
+      - .github/workflows/release-notes.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-notes
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Check out the changelog
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Extract release descriptions
+        run: |
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+
+          output = Path('dist')
+          output.mkdir(exist_ok=True)
+          changelog = Path('CHANGELOG.md').read_text(encoding='utf-8')
+          for match in re.finditer(r'^## ([0-9]+\.[0-9]+\.[0-9]+)(?: — [^\n]+)?\n(.*?)(?=^## |\Z)', changelog, re.M | re.S):
+              (output / f'release-notes-{match[1]}.md').write_text(match[2].strip() + '\n', encoding='utf-8')
+          PY
+
+      - name: Update existing release descriptions
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release list --limit 100 --json tagName --jq '.[].tagName' > dist/release-tags.txt
+          while IFS= read -r tag; do
+            if [[ "$tag" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] && [[ -f "dist/release-notes-${tag}.md" ]]; then
+              gh release edit "$tag" --notes-file "dist/release-notes-${tag}.md"
+            fi
+          done < dist/release-tags.txt

@@ -1,144 +1,162 @@
-# Разработка Yeelight Curtain BLE
+# Yeelight Curtain BLE development
 
-Этот файл содержит инструкции для работы с кодом и технические результаты
-исследования. Пользовательская документация — `README.md`; самостоятельная
-инструкция установки, входящая в архив компонента, — `INSTALL.md`.
-Не возвращайте в README разбор пакетов, историю захватов и команды разработки.
+This file contains development instructions and technical findings. User-facing
+documentation belongs in `README.md`; the standalone installation guide shipped
+in the component archive is `INSTALL.md`. Keep packet analysis, capture history
+and development commands out of the README.
 
-## Область поддержки и проверенные результаты
+## Supported device and verification
 
-- Модель: Yeelight Curtain Lights YLYDD-0053, product ID 16787461.
-- Архитектура: custom integration → Bluetooth API Home Assistant → локальный
-  адаптер или ESPHome Bluetooth Proxy с активными GATT-соединениями → гирлянда.
-- На реальном устройстве с Mac проверены независимое подключение, чтение
-  состояния и выключение. Выключение подтверждено ответом `ok`, уведомлением
-  `power: off`, повторным чтением и наблюдением пользователя.
-- Транспорт интеграции отдельно проверен чтением устройства с Bleak 3.0.2.
-- После заводского сброса, выполненного пользователем 2026-11-15, тем же
-  `CurtainClient` через Bluetooth Mac проверены чтение, питание вкл/выкл,
-  яркость 10/50/100%, Rainbow, передача GIF Christmas Tree, все шесть музыкальных
-  эффектов с палитрой Tranquil, выключение музыки и новое BLE-подключение.
-  Все 16 JSON-команд изменения состояния получили `ok`; 18 шагов подтверждены
-  чтением. Бинарная инициализация, явный pairing, аккаунт и приложение не нужны
-  для этого проверенного экземпляра. Реакция на звук визуально не оценивалась.
-- После последующего физического отключения и включения питания получены ещё
-  пять ответов без инициализации; питание осталось `off`, яркость — 100%,
-  ID пресета — Christmas Tree. Это подтверждает чтение после холодного старта,
-  но не является визуальной проверкой сохранности GIF или реакции на звук.
-- Загрузка компонента, config flow, сущности, ошибки и передача GIF проверены
-  в HA 2026.11.1 с имитатором периферии. Эти тесты не доказывают работу proxy.
-- Работа через настоящий HA/ESPHome proxy ещё требует проверки. Остальные
-  обычные пресеты и музыкальные палитры подтверждены захватами штатного
-  приложения, но новым клиентом на устройстве отдельно не проверены.
-- OTA, объединение гирлянд и Pure Color Mode не реализованы.
+- Model: Yeelight Curtain Lights YLYDD-0053, product ID 16787461.
+- Architecture: custom integration → Home Assistant Bluetooth API → local
+  adapter or ESPHome Bluetooth Proxy with active GATT connections → curtain.
+- Independent connection, state reads and power off were verified on a real
+  device from a Mac. Power off was confirmed by an `ok` response, a `power: off`
+  notification, a subsequent read and the user's observation.
+- The integration transport was separately verified by reading the device with
+  Bleak 3.0.2.
+- After the user's factory reset on 2026-11-15, the same `CurtainClient` over Mac
+  Bluetooth verified reads, power on/off, brightness at 10/50/100%, Rainbow,
+  Christmas Tree GIF transfer, all six music effects with the Tranquil palette,
+  Music Mode off and a new BLE connection. All 16 JSON state-changing commands
+  returned `ok`; 18 steps were confirmed by reads. This tested unit did not need
+  binary initialization, explicit pairing, an account or the app. Visual response
+  to sound was not assessed.
+- Following a physical power cycle, five more responses were received without
+  initialization; power remained `off`, brightness 100% and the preset ID matched
+  Christmas Tree. This verifies reads after a cold start, not visual persistence
+  of the GIF or sound response.
+- Component loading, config flow, entities, errors and GIF transfer were checked
+  in HA 2026.11.1 using a simulated peripheral. These tests do not verify a proxy.
+- Actual HA/ESPHome proxy operation still needs verification. Other regular
+  presets and music palettes are supported by stock-app captures, but have not
+  been individually tested on the device with the new client.
+- OTA, grouping curtains and Pure Color Mode are not implemented.
 
-Сохраняйте это различие в документации: наблюдение в захвате, тест с имитатором
-и проверка на устройстве — разные уровни подтверждения. Не объявляйте поддержку
-других моделей или версий HA без проверки.
+Keep capture evidence, simulated tests and hardware verification distinct in the
+documentation. Do not claim support for other models or HA versions without testing.
 
-## Структура проекта
+## Project layout
 
-- `custom_components/yeelight_curtain_ble/` — устанавливаемая интеграция.
-- `client.py` — BLE-сессия, JSON-запросы, уведомления и передача файлов.
-- `coordinator.py` — выбор доступного адаптера через HA, последовательные
-  операции, проверка состояния и периодическое чтение.
-- `light.py`, `switch.py`, `select.py` — сущности HA.
-- `protocol.py` — кодирование JSON и блоков файлового протокола.
-- `catalog.json`, `presets/` — каталог эффектов, музыкальные палитры и 16 GIF.
-- `tests/` — тесты протокола, клиента, coordinator, config flow и загрузки HA.
-- `tools/build_release.py` — архив устанавливаемого компонента.
-- `tools/prepare_hacs_repo.py` — экспорт разрешённых файлов в отдельный
-  репозиторий `dist/hacs-repository` и архив для публикации.
+- `custom_components/yeelight_curtain_ble/`: installable integration.
+- `client.py`: BLE session, JSON requests, notifications and file transfer.
+- `coordinator.py`: adapter selection through HA, serialized operations, state
+  verification and polling.
+- `light.py`, `switch.py`, `select.py`: HA entities.
+- `protocol.py`: JSON and file-block encoding.
+- `catalog.json`, `presets/`: effect catalog, music palettes and 16 GIFs.
+- `frontend.py`, `www/`: exact public static routes and optional presets card.
+- `brand/`: original curtain artwork for the integration. Do not replace it with
+  the Yeelight app logo. `www/curtain.png` is the same artwork for the card and light.
+- `tests/`: protocol, client, coordinator, config flow, HA loading and asset-route tests.
+- `tools/build_release.py`: installable component archive.
+- `tools/prepare_hacs_repo.py`: allowlisted export to `dist/hacs-repository` and
+  a repository archive for publication.
 
-В исходном исследовательском workspace также могут присутствовать `analysis/`,
-`ble_probe.py`, `decode_capture.py`, `requirements.txt` и `.captures/`.
-Они не входят в публичный экспорт. Отсутствие этих материалов в клоне GitHub
-не должно мешать установке, обычным тестам или сборке.
+The research workspace may also contain `analysis/`, `ble_probe.py`,
+`decode_capture.py`, `requirements.txt` and `.captures/`. These are excluded from
+the public export. Their absence in a GitHub clone must not prevent installation,
+normal tests or packaging.
 
-## Работа с HA и состоянием
+## HA integration and state
 
-Используйте Bluetooth API HA и `bleak-retry-connector`. Для выбора устройства
-нужен `bluetooth.async_ble_device_from_address(..., connectable=True)`:
-данные сканирования от недоступного для соединений proxy недостаточны.
-IP proxy не является параметром интеграции. UUID CoreBluetooth с Mac нельзя
-переносить в HA вместо BLE-адреса.
+Use the HA Bluetooth API and `bleak-retry-connector`. Select devices through
+`bluetooth.async_ble_device_from_address(..., connectable=True)`; advertisements
+from a proxy that cannot connect are insufficient. The proxy IP is not an
+integration option. A Mac CoreBluetooth UUID cannot replace the BLE address in HA.
 
-Сохраняйте одну BLE-сессию для уведомлений и команд. Сериализуйте операции,
-включая чтение состояния и загрузку GIF. При разрыве соединения завершайте
-ожидающие запросы ошибкой; callback старого клиента не должен сбрасывать новую
-сессию. Команды изменения состояния автоматически повторно не отправляйте.
+Keep one BLE session for notifications and commands. Serialize all operations,
+including state reads and GIF uploads. On disconnect, fail pending requests;
+a stale client's callback must not reset a newer session. Do not automatically
+retry state-changing commands.
 
-После команды проверяйте фактический ответ и состояние. Не заменяйте наблюдаемое
-состояние запрошенным значением. Текущее поведение — чтение после изменения,
-уведомления и опрос каждые 30 секунд; ошибка обновления делает сущности
-недоступными, следующее обновление пытается восстановить связь.
+Verify the response and actual state after a command. Do not replace observed
+state with the requested value. Current behavior uses readback after changes,
+notifications and polling every 30 seconds. An update failure makes entities
+unavailable; the next update attempts to reconnect.
 
-Музыкальная палитра — сохранённое предпочтение, поскольку устройство не возвращает
-её цвета. Не выдавайте её за прочитанное состояние. При выключенной музыке выбор
-эффекта/палитры сохраняется без отправки команды. При включённой — применяется.
-Неизвестный музыкальный эффект не подменяйте известным. Включение музыки само
-по себе не включает питание, а обычный эффект выключает музыкальный режим.
-Обычные анимации доступны отдельной сущностью `select` «Пресет» и через эффекты
-светильника. Обе сущности показывают один подтверждённый пресет из состояния;
-при активной музыке обычный пресет неизвестен. Не смешивайте 19 обычных пресетов
-с шестью музыкальными эффектами и 40 музыкальными палитрами.
-Семантический MDI-значок каждого обычного пресета хранится в `catalog.json`.
-Сущность «Пресет» показывает значок текущей подтверждённой анимации; для Music
-Mode и неизвестного пресета используется общий значок. Сохраняйте значения
-опций и имена пресетов: они уже могут использоваться в автоматизациях.
+The music palette is a saved preference because the device does not return its
+colors. Do not present it as observed state. With Music Mode off, save effect
+and palette choices without sending a command. Apply changes while music is on.
+Do not substitute a known effect for an unknown music effect. Enabling Music
+Mode does not itself turn on the light; a regular effect stops Music Mode.
 
-## Восстановленный протокол
+Regular animations are exposed by a separate Preset `select` entity and the
+light's effects. Both show the same confirmed preset from device state. The
+regular preset is unknown while music is active. Keep the 19 regular presets
+separate from the six music effects and 40 palettes.
 
-Характеристики имеют базовый UUID `0000xxxx-0000-1000-8000-00805f9b34fb`:
+Each regular preset's semantic MDI icon lives in `catalog.json`. The Preset
+entity shows the confirmed animation's icon, or a generic animation icon for
+Music Mode or an unknown preset. Preserve option values and preset names: users
+may already depend on them in automations.
 
-| Короткий UUID | Назначение |
+## Optional dashboard card
+
+The native HA select dropdown does not render per-option icons. The separate
+`custom:yeelight-curtain-presets-card` renders them without changing entity
+options. It calls `select.select_option` through HA, never BLE directly. The
+selected value must follow HA state, including after errors. Disable controls
+while a command is pending or the entity is unavailable. Reject music selectors.
+Preserve keyboard navigation, focus handling and English/Russian localization.
+
+`frontend.py` registers only the card JS, catalog and curtain PNG as exact public
+static paths. Do not expose component directories or private research files.
+All runtime assets are local; do not add remote scripts or CDN dependencies.
+Frontend asset changes require a new version in the documented resource URL.
+Users register the dashboard resource once; setup does not edit their dashboards.
+
+## Reconstructed protocol
+
+Characteristics use the base UUID `0000xxxx-0000-1000-8000-00805f9b34fb`:
+
+| Short UUID | Purpose |
 | --- | --- |
-| AE3B | Запись JSON-команд |
-| AE3C | JSON-ответы и уведомления |
-| AE3D | Запись файловых блоков |
-| AE3E | Подтверждения передачи файла |
+| AE3B | JSON command writes |
+| AE3C | JSON responses and notifications |
+| AE3D | File-block writes |
+| AE3E | File-transfer acknowledgments |
 
-JSON кодируется в UTF-8, завершается CRLF, содержит ID запроса. Учитывайте
-частичные сообщения и несколько сообщений в одном уведомлении; сопоставляйте
-ответы с ожидающими запросами по ID.
+JSON is UTF-8, ends with CRLF and contains a request ID. Handle partial messages
+and multiple messages in one notification; match responses to pending requests by ID.
 
-Подтверждённые методы:
+Confirmed methods:
 
-| Действие | Метод и параметры |
+| Action | Method and parameters |
 | --- | --- |
-| Питание | `set_power`, `["on" / "off", "smooth", 500]` |
-| Яркость | `set_scene`, `["bright", percent, 0]` |
-| Обычный эффект | `set_fx_effect`, `[effect_id, custom_id, 1, options]` |
-| Музыка | `set_ps`, `["mic_music_mode", json_string]` |
+| Power | `set_power`, `["on" / "off", "smooth", 500]` |
+| Brightness | `set_scene`, `["bright", percent, 0]` |
+| Regular effect | `set_fx_effect`, `[effect_id, custom_id, 1, options]` |
+| Music | `set_ps`, `["mic_music_mode", json_string]` |
 
-Параметр `json_string` — строка с вложенным JSON. Для выключения музыки это
-`{"on":0}`, для включения — `on`, `effect_id` и массив `palatte` из 16 ARGB-цветов.
-Сохраняйте написание **`palatte`**: таково имя поля в протоколе.
-Музыкальные ID: Sound Wave — 87, Shine — 85, Spectrum — 86, Converge — 83,
-Bounce — 88, Breath — 84. Полные параметры обычных эффектов и палитры берите
-из `catalog.json`, а не из протокола других моделей Yeelight.
+`json_string` contains nested JSON. Disabling music uses `{"on":0}`; enabling
+uses `on`, `effect_id` and `palatte`, an array of 16 ARGB colors. Preserve the
+spelling **`palatte`**: this is the actual protocol field.
+Music IDs: Sound Wave 87, Shine 85, Spectrum 86, Converge 83, Bounce 88, Breath 84.
+Use `catalog.json` for complete regular-effect parameters and palettes; commands
+from other Yeelight models are not evidence for this protocol.
 
-Bonfire, Rainbow и Starry sky используют встроенные эффекты. Остальные
-16 пресетов требуют загрузки GIF перед активацией. Проверяйте SHA-256 файла
-по каталогу. Не активируйте эффект, если передача не завершилась успешно.
+Bonfire, Rainbow and Starry sky use built-in effects. The other 16 presets need
+a GIF upload before activation. Verify each file's SHA-256 against the catalog.
+Do not activate an effect if its transfer did not complete successfully.
 
-Файловый блок состоит из 509 байт: `01`, номер блока, номер XOR `FF`,
-504 байта данных, CRC-16/CCITT с начальным значением `FFFF` в big endian.
-Последний блок дополняется `1A`. Завершение — байт `04`. После каждого блока
-и завершения ожидается `06` на AE3E. Нужны ATT MTU ≥ 512 и запись без ответа
-размером ≥ 509 байт. Произвольное дробление блока, повторная передача и
-переполнение номера блока не подтверждены захватами; не добавляйте их молча.
+Each file block is 509 bytes: `01`, block number, block number XOR `FF`, 504 data
+bytes and CRC-16/CCITT initialized to `FFFF`, in big endian. Pad the final block
+with `1A`. End the transfer with `04`. Expect `06` on AE3E after every block and
+at the end. ATT MTU ≥ 512 and write-without-response size ≥ 509 bytes are required.
+Arbitrary splitting, retransmission and block-number overflow are not supported
+by the captures; do not silently introduce them.
 
-В Android наблюдалась двоичная инициализация FE88/FE89, однако независимые
-команды с Mac работали без неё, в том числе после заводского сброса.
-Текущий JSON-транспорт для проверенного экземпляра не требует дополнительной
-инициализации. Не добавляйте pairing/reset или повтор захваченных бинарных
-пакетов по предположению; другие устройства и прошивки отдельно не проверены.
+Binary FE88/FE89 initialization was observed on Android, but independent Mac
+commands worked without it, including after a factory reset. The current JSON
+transport needs no additional initialization for the tested unit. Do not add
+pairing/reset or replay captured binary packets based on assumptions; other
+units and firmware versions have not been verified separately.
 
-## Проверки и сборка
+## Checks and packaging
 
-Разработка проверялась на Python 3.14 и HA 2026.11.1. Используйте отдельное
-окружение и зависимости из `requirements-dev.txt`:
+Development was checked on Python 3.14 and HA 2026.11.1. Use an isolated
+environment and the dependencies in `requirements-dev.txt`:
 
 ```sh
 python3.14 -m venv .venv
@@ -148,138 +166,141 @@ python3.14 -m venv .venv
 .venv/bin/python tools/build_release.py
 ```
 
-Тест реконструкции по личным захватам выполняется дополнительно при наличии
-локальных данных; в публичном клоне он может быть пропущен. Не делайте личные
-журналы обязательной зависимостью тестов.
+Capture reconstruction tests are optional when local recordings are available;
+they may be skipped in a public clone. Do not make personal logs a test dependency.
 
-Подбирайте проверки к изменению. Для правок Markdown достаточно проверить
-ссылки, соответствие документации поведению и экспорт. Изменение сборки требует
-проверки состава архива. Изменения команд, обработки ошибок или соединений
-проверяйте соответствующими тестами; аппаратные проверки отмечайте отдельно.
+Match verification to the change. For Markdown edits, check links, consistency
+with behavior and the export. Packaging changes require an archive-content
+check. Test command handling, errors and connections with relevant tests; record
+hardware verification separately. For the dashboard card, check browser behavior,
+keyboard navigation, errors, state readback and light/dark appearance.
 
-`build_release.py` создаёт в `dist/` архив версии из `manifest.json` и SHA-256.
-В архив входят компонент, каталог, GIF, изображения бренда и `INSTALL.md`.
-Тесты, исследовательские материалы и окружение разработки туда не входят.
+`build_release.py` creates the manifest version's archive and SHA-256 in `dist/`.
+It includes the component, catalog, GIFs, brand images, local card assets and
+`INSTALL.md`. Tests, research materials and development environments are excluded.
 
-## Версии и релизы HACS
+## HACS versions and releases
 
-Источник версии — `custom_components/yeelight_curtain_ble/manifest.json`.
-Используйте стабильные номера `MAJOR.MINOR.PATCH` без префикса `v`: исправления
-увеличивают PATCH, новые возможности — MINOR, несовместимые изменения — MAJOR.
-Пока версия меньше 1.0, сохраняйте пометку об экспериментальной поддержке.
-Не изменяйте содержимое уже опубликованных тегов и релизов.
+The version source is `custom_components/yeelight_curtain_ble/manifest.json`.
+Use stable `MAJOR.MINOR.PATCH` numbers without a `v` prefix: fixes increment PATCH,
+new features increment MINOR, incompatible changes increment MAJOR. Retain the
+experimental-support notice before 1.0. Never rewrite published tags or replace
+published release assets. Release descriptions may be corrected or translated
+when the user requests it; keep the historical behavior accurate.
 
-Для каждого выпуска измените manifest и добавьте раздел `## X.Y.Z — YYYY-MM-DD`
-в `CHANGELOG.md`. Выполните проверки, затем проверьте сборку с точным тегом:
+For each release, update the manifest and add `## X.Y.Z — YYYY-MM-DD` to
+`CHANGELOG.md`. Keep public documentation and release notes in English; retain
+localized HA interface files. Run the checks, then build against the exact tag:
 
 ```sh
-.venv/bin/python tools/build_release.py --tag 0.1.1
+.venv/bin/python tools/build_release.py --tag 0.2.0
 ```
 
-Здесь `0.1.1` — пример; для следующего выпуска используйте новую версию.
-Сборка остановится, если тег не совпадает с manifest или нет заметок в CHANGELOG.
-Команды тестов загрузчика не должны требовать ручной замены номера версии.
-Тесты сборки выполняются и без HA:
+Here `0.2.0` is an example; use the new version for the next release. The build
+fails on a tag/manifest mismatch or missing changelog notes. Loading tests must
+not require manual version edits. Packaging tests also run without HA:
 
 ```sh
 python3 -m unittest discover -s tests -p test_release.py -v
 ```
 
-После экспорта и коммита в публичном репозитории отправьте main, затем создайте
-и отправьте тег соответствующей версии:
+After exporting and committing in the public repository, push main, then create
+and push the matching version tag:
 
 ```sh
 git push origin main
-git tag -a 0.1.1 -m 'Release 0.1.1'
-git push origin 0.1.1
+git tag -a 0.2.0 -m 'Release 0.2.0'
+git push origin 0.2.0
 ```
 
-Workflow `.github/workflows/release.yml` запускается по тегу, проверяет сборку
-и публикует GitHub Release с заметками, ZIP и SHA-256. Используется встроенный
-`GITHUB_TOKEN`, отдельный PAT не нужен. Проверяйте успешное завершение workflow,
-совпадение тега с manifest, наличие файлов и checksum. Простого Git-тега
-недостаточно для выбора релиза в HACS.
+`.github/workflows/release.yml` runs on tags, validates packaging and publishes a
+GitHub Release with notes, ZIP and SHA-256. It uses the built-in `GITHUB_TOKEN`;
+no separate PAT is needed. Verify workflow success, matching tag/manifest,
+release files and checksum. A Git tag alone does not create a HACS release.
 
-HACS устанавливает компонент из репозитория на выбранном теге. `zip_release`
-не включён: приложенный ZIP с путём `custom_components/...` предназначен для
-ручной установки. `hide_default_branch` скрывает разработческую ветку из списка
-версий, а `render_readme` показывает пользовательский README.
+`.github/workflows/release-notes.yml` synchronizes existing release descriptions
+from their matching English changelog sections when the changelog changes on
+main. It changes descriptions only, preserving tags and assets. Verify the
+published descriptions and unchanged asset digests after a translation.
 
-## Экспорт и публикация
+HACS installs the component from the repository at the selected tag.
+`zip_release` is not enabled: the attached ZIP with `custom_components/...`
+paths is intended for manual installation. `hide_default_branch` hides the
+development branch from version selection; `render_readme` displays the README.
+
+## Export and publication
 
 ```sh
 .venv/bin/python tools/prepare_hacs_repo.py
 ```
 
-Экспорт копирует канонические `README.md`, `AGENTS.md`, `INSTALL.md`, метаданные,
-код, ассеты, тесты и инструменты сборки по явному списку. README не генерируется
-из инструкции установки. Перед публикацией проверьте `dist/publication-review.json`
-и Git diff в экспортированном репозитории. Существующая `.git` сохраняется.
-Не включайте исходные Bluetooth-журналы, bugreport, APK, видео, скриншоты,
-адреса устройств или данные телефона. Не используйте массовое добавление
-файлов из исследовательского workspace для публикации.
+The export copies canonical `README.md`, `AGENTS.md`, `INSTALL.md`, metadata,
+code, assets, tests and packaging tools using an explicit allowlist. The README
+is not generated from the installation guide. Before publishing, inspect
+`dist/publication-review.json` and the exported Git diff. An existing `.git`
+directory is preserved. Do not publish raw Bluetooth logs, bugreports, APKs,
+videos, screenshots, device addresses or phone data. Do not bulk-add files from
+the research workspace.
 
-Публичный репозиторий: `eldarsudden/hass-yeelight-curtain-ble`.
-Если работа ведётся в его обычном клоне, коммитьте изменения в нём;
-при работе в исследовательском workspace — в `dist/hacs-repository` после
-экспорта. Пользователь предпочитает локальный Git. Проверяйте remote и diff,
-используйте обычный push без переписывания истории. Не меняйте глобальную
-конфигурацию Git; при необходимости задавайте автора для отдельного коммита.
+Public repository: `eldarsudden/hass-yeelight-curtain-ble`.
+In a normal clone, commit there. In the research workspace, export and commit in
+`dist/hacs-repository`. The user prefers local Git. Check the remote and diff;
+use a normal push without rewriting history. Do not change global Git settings;
+set author identity for an individual commit when necessary.
 
-## Дополнительное исследование на компьютере
+## Additional research on a computer
 
-Следующие команды относятся только к workspace с `ble_probe.py` и
-`requirements.txt`. Скрипт использует Bluetooth самого компьютера, не proxy.
-На macOS разрешите Bluetooth терминалу. Закройте Yeelight и другие BLE-клиенты.
-Для исследовательских зависимостей создайте отдельное окружение, чтобы не
-менять закреплённые зависимости HA:
+These commands apply only to a workspace containing `ble_probe.py` and
+`requirements.txt`. The script uses the computer's Bluetooth, not a proxy.
+On macOS, grant Bluetooth access to the terminal. Close Yeelight and other BLE
+clients. Create a separate environment for research dependencies to avoid changing
+HA's pinned dependencies:
 
 ```sh
 python3.14 -m venv .venv-probe
 .venv-probe/bin/python -m pip install -r requirements.txt
 .venv-probe/bin/python ble_probe.py scan --output scan.json
-.venv-probe/bin/python ble_probe.py inspect --address 'АДРЕС_ИЗ_SCAN_JSON' --output gatt.json
+.venv-probe/bin/python ble_probe.py inspect --address 'ADDRESS_FROM_SCAN_JSON' --output gatt.json
 ```
 
-Найдите гирлянду по скану; при необходимости сравните сканы с включённым
-и выключенным устройством. На Mac адрес — UUID для этого компьютера.
-`inspect` обнаруживает сервисы и отключается: он не отправляет команды,
-не включает уведомления и не запускает pairing явно. Один `gatt.json`
-не раскрывает команды управления.
+Find the curtain in the scan; compare scans with power on and off if necessary.
+On a Mac, the address is a UUID specific to that computer. `inspect` discovers
+services and disconnects: it sends no control commands, enables no notifications
+and does not explicitly pair. A `gatt.json` alone does not reveal control commands.
 
-## Запись Android BLE
+## Android BLE capture
 
-1. Включите **Bluetooth HCI snoop log** в параметрах разработчика, полный
-   режим при наличии выбора. Перезапустите Bluetooth.
-2. Начните запись до подключения Yeelight, чтобы сохранить начало сессии.
-3. Выполните действия с паузами около 5 секунд, отмечая время: выключение,
-   включение, яркость 10/50/100%, несколько эффектов, музыка вкл/выкл.
-   Для каталога запишите названия эффектов и палитр или экран приложения.
-4. Переподключитесь и повторите питание и один эффект для проверки новой сессии.
-5. Извлеките полный HCI-журнал из bugreport или журнала производителя.
-   AOSP `btsnooz.py` помогает только при наличии соответствующих данных.
-   У OnePlus журнал Feedback с ACL-пакетами оказался полезнее cached HCI.
-6. Отключите журналирование после записи. Храните исходники локально;
-   для анализа предпочитайте выделенный BLE-журнал полному bugreport.
+1. Enable **Bluetooth HCI snoop log** in Developer options, choosing full logging
+   if available. Restart Bluetooth.
+2. Start recording before connecting Yeelight to include the session beginning.
+3. Perform actions about five seconds apart and note the times: off, on,
+   brightness 10/50/100%, several effects and music on/off. Record effect and
+   palette names, or record the app screen, to build the catalog.
+4. Reconnect and repeat power and one effect to check a fresh session.
+5. Extract the full HCI log from a bugreport or the manufacturer's log.
+   AOSP `btsnooz.py` only helps when its data is present. On OnePlus, Feedback
+   logs containing ACL packets proved more useful than cached HCI data.
+6. Disable logging afterward. Keep original data local; prefer an extracted
+   BLE log over a full bugreport for analysis.
 
-`decode_capture.py` разбирает btsnoop/H4 и собирает фрагментированные ACL.
-Сопоставляйте запись экрана с командами по последовательности действий;
-часовой пояс и время OEM-журнала проверяйте отдельно. Остановка реакции на звук
-после отключения телефона сама по себе не доказывает отсутствие микрофона:
-устройство также может выйти из режима при разрыве связи.
+`decode_capture.py` parses btsnoop/H4 and reassembles fragmented ACL packets.
+Match screen recordings to commands using the action sequence; check the OEM
+log's time zone and timestamps separately. Sound response stopping after phone
+disconnection does not by itself prove the absence of a microphone: the device
+may exit Music Mode when the connection closes.
 
-Локальные результаты при наличии `analysis/`: `2026-11-14-capture.md`,
+Local findings, when `analysis/` is available: `2026-11-14-capture.md`,
 `2026-11-14-logkit.md`, `2026-11-15-recording.md`, `2026-11-15-music.md`,
-`2026-11-15-mac-connection.md`. Ссылки на эти приватные материалы не должны
-становиться зависимостями публичной документации.
+`2026-11-15-mac-connection.md` and `2026-11-15-factory-reset.md`.
+Private research files must not become dependencies of public documentation.
 
-## Источники
+## Sources
 
-- [Bluetooth API Home Assistant](https://contributors.home-assistant.io/core/integrations/bluetooth/)
+- [Home Assistant Bluetooth API](https://contributors.home-assistant.io/core/integrations/bluetooth/)
 - [ESPHome Bluetooth Proxy](https://esphome.io/components/bluetooth_proxy/)
 - [Bleak Retry Connector](https://github.com/Bluetooth-Devices/bleak-retry-connector)
-- [Bleak: сканирование](https://bleak.readthedocs.io/en/latest/api/scanner.html)
-- [Bleak: подключение и GATT](https://bleak.readthedocs.io/en/latest/api/client.html)
-- [Android: HCI snoop log](https://source.android.com/docs/core/connect/bluetooth/verifying_debugging)
-- [Драйвер Bedside/Candela](https://github.com/hcoohb/hass-yeelightbt/blob/master/custom_components/yeelight_bt/yeelightbt.py)
-  относится к другим устройствам; его команды не подтверждают протокол YLYDD-0053.
+- [Bleak scanning](https://bleak.readthedocs.io/en/latest/api/scanner.html)
+- [Bleak connections and GATT](https://bleak.readthedocs.io/en/latest/api/client.html)
+- [Android HCI snoop logging](https://source.android.com/docs/core/connect/bluetooth/verifying_debugging)
+- [Bedside/Candela driver](https://github.com/hcoohb/hass-yeelightbt/blob/master/custom_components/yeelight_bt/yeelightbt.py)
+  targets other devices; its commands do not establish the YLYDD-0053 protocol.

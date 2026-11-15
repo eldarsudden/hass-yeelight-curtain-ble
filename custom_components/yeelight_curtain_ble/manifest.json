@@ -1,12 +1,13 @@
 {
   "domain": "yeelight_curtain_ble",
   "name": "Yeelight Curtain BLE",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "config_flow": true,
   "integration_type": "device",
   "iot_class": "local_polling",
   "dependencies": [
-    "bluetooth"
+    "bluetooth",
+    "frontend"
   ],
   "requirements": [],
   "bluetooth": [

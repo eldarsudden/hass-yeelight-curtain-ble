@@ -19,6 +19,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
 class CurtainLight(CurtainEntity, LightEntity):
     _attr_name = None
+    _attr_entity_picture = "/yeelight_curtain_ble/curtain.png"
     _attr_color_mode = ColorMode.BRIGHTNESS
     _attr_supported_color_modes = {ColorMode.BRIGHTNESS}
     _attr_supported_features = LightEntityFeature.EFFECT

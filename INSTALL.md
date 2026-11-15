@@ -1,44 +1,64 @@
-# Установка Yeelight Curtain BLE
+# Install Yeelight Curtain BLE
 
-Нужны Home Assistant 2026.11.0 или новее, настроенный Bluetooth-адаптер
-или ESPHome Bluetooth Proxy с активными соединениями и гирлянда YLYDD-0053.
-Версия экспериментальная; работа через HA и ESPHome proxy ещё требует проверки.
+You need Home Assistant 2026.11.0 or later, a configured Bluetooth adapter or
+ESPHome Bluetooth Proxy with active connections, and a YLYDD-0053 curtain.
+Support is experimental; operation through HA and ESPHome still needs hardware verification.
 
-## Через HACS
+## HACS
 
-[![Добавить в HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=eldarsudden&repository=hass-yeelight-curtain-ble&category=integration)
+[![Add to HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=eldarsudden&repository=hass-yeelight-curtain-ble&category=integration)
 
-Кнопка открывает репозиторий в вашем HACS. Скачайте интеграцию и перезапустите
-HA. Если HACS ещё не установлен, сначала установите его.
-Добавить репозиторий можно и через меню:
+The button opens the repository in your HACS installation. Download the
+integration and restart HA. Install HACS first if it is not already available.
+Alternatively, add the repository through the menu:
 
-1. Откройте **HACS → ⋮ → Custom repositories / Пользовательские репозитории**.
-2. Добавьте `https://github.com/eldarsudden/hass-yeelight-curtain-ble`, тип **Integration**.
-3. Скачайте **Yeelight Curtain BLE** и перезапустите HA.
-4. Закройте Yeelight на телефоне и отключите другие BLE-клиенты.
-5. В **Настройки → Устройства и службы** настройте обнаруженную гирлянду
-   или выберите **Добавить интеграцию → Yeelight Curtain BLE**.
+1. Open **HACS → ⋮ → Custom repositories**.
+2. Add `https://github.com/eldarsudden/hass-yeelight-curtain-ble`, type **Integration**.
+3. Download **Yeelight Curtain BLE** and restart HA.
+4. Close Yeelight on your phone and disconnect other BLE clients.
+5. In **Settings → Devices & services**, configure the discovered curtain or
+   choose **Add integration → Yeelight Curtain BLE**.
 
-## Вручную
+## Manual installation
 
-1. Скопируйте папку `custom_components/yeelight_curtain_ble` из архива
-   или репозитория в каталог конфигурации HA. В HA OS должен получиться путь
-   `/config/custom_components/yeelight_curtain_ble/manifest.json`.
-   Для Container используйте каталог, смонтированный в `/config`.
-2. Перезапустите Home Assistant.
-3. Закройте Yeelight на телефоне и отключите другие BLE-клиенты.
-4. В **Настройки → Устройства и службы** настройте обнаруженную гирлянду
-   или выберите **Добавить интеграцию → Yeelight Curtain BLE**.
+1. Copy `custom_components/yeelight_curtain_ble` from the release archive or
+   repository into your HA configuration directory. On HA OS, the resulting
+   manifest path is `/config/custom_components/yeelight_curtain_ble/manifest.json`.
+   For Container, use the directory mounted at `/config`.
+2. Restart Home Assistant.
+3. Close Yeelight on your phone and disconnect other BLE clients.
+4. In **Settings → Devices & services**, configure the discovered curtain or
+   choose **Add integration → Yeelight Curtain BLE**.
 
-Выберите гирлянду и подтвердите проверку связи. При настройке интеграция
-только читает состояние. YAML для самой интеграции не нужен.
-Сбрасывать рабочую гирлянду ради установки не требуется. На нашем экземпляре
-после заводского сброса локальное BLE-управление с Mac работало сразу,
-без первоначальной привязки через приложение Yeelight.
+Select the curtain and confirm the connection check. Setup only reads the device
+state. No YAML is required for the integration itself.
+You do not need to reset a working curtain to install it. On the tested unit,
+local control from a Mac worked immediately after a factory reset without
+initial setup in the Yeelight app.
 
-После установки и перезапуска HA настройку можно открыть кнопкой:
+After installation and restart, this button opens integration setup:
 
-[![Настроить интеграцию в Home Assistant](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=yeelight_curtain_ble)
+[![Set up in Home Assistant](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=yeelight_curtain_ble)
 
-Настройка ESPHome, управление и ограничения описаны в
-[README репозитория](https://github.com/eldarsudden/hass-yeelight-curtain-ble#readme).
+## Optional preset picker with icons
+
+Add this dashboard resource as a **JavaScript module**:
+
+```text
+/yeelight_curtain_ble/yeelight-curtain-presets.js?v=0.2.0
+```
+
+Then add a card using your curtain's regular Preset entity:
+
+```yaml
+type: custom:yeelight-curtain-presets-card
+entity: select.your_curtain_preset
+title: Presets
+```
+
+The card shows an icon beside every regular preset. Use the Preset entity,
+not a music selector. After future updates, change the resource URL version and
+reload the dashboard.
+
+ESPHome configuration, controls, full card setup and limitations are described
+in the [repository README](https://github.com/eldarsudden/hass-yeelight-curtain-ble#readme).

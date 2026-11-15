@@ -5,8 +5,15 @@ from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 
 from .coordinator import CurtainCoordinator, load_catalog
+from .frontend import async_setup_frontend
 
 PLATFORMS = [Platform.LIGHT, Platform.SWITCH, Platform.SELECT]
+
+
+async def async_setup(hass: HomeAssistant, config: dict) -> bool:
+    """Register the local optional card and curtain entity picture once."""
+    await async_setup_frontend(hass)
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:

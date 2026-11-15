@@ -1,39 +1,62 @@
-# История изменений
+# Changelog
+
+## 0.2.0 — 2026-11-15
+
+- Add an optional dashboard card with a semantic icon beside every one of the
+  19 regular presets in its dropdown. Configure it as
+  `custom:yeelight-curtain-presets-card` with the curtain's regular Preset entity.
+- Serve the card, preset catalog and curtain artwork locally through Home
+  Assistant. Add the resource
+  `/yeelight_curtain_ble/yeelight-curtain-presets.js?v=0.2.0` as a JavaScript module
+  after updating and restarting HA; see the README for setup.
+- Support keyboard navigation, pending-command feedback and accessible errors.
+  The selected preset follows confirmed HA state; music selectors are rejected.
+- Keep the curtain artwork as the integration icon and use it for the light's
+  picture. No Yeelight app logo is included.
+- Translate the README, installation guide, development documentation and
+  changelog into English. Retain Russian interface translations.
+- Synchronize the descriptions of existing releases from the English changelog
+  without changing their tags or downloadable assets.
+
+The standard HA dropdown continues to use text options. Icons beside individual
+options are available in the new card. Support remains experimental; actual
+HA/ESPHome proxy operation still needs hardware verification.
 
 ## 0.1.2 — 2026-11-15
 
-- Для каждого из 19 обычных пресетов подобран значок по смыслу названия:
-  Christmas Tree — ёлка, Rainbow — радуга, Bonfire — костёр и другие.
-- Значок сущности «Пресет» меняется по активной анимации. При Music Mode
-  или неизвестном пресете показывается общий значок анимации.
-- Названия пресетов и параметры существующих автоматизаций сохранены.
-- Документация дополнена успешной проверкой локального управления с Mac
-  после заводского сброса и полного отключения питания, без приложения Yeelight.
+- Assign a semantic icon to each of the 19 regular presets: a tree for Christmas
+  Tree, a rainbow for Rainbow, a campfire for Bonfire, and others.
+- Update the Preset entity's icon to match the active animation. Show a generic
+  animation icon during Music Mode or when the regular preset is unknown.
+- Preserve preset names and existing automation parameters.
+- Document successful local control from a Mac after a factory reset and a full
+  power cycle, without the Yeelight app.
 
-Стандартный выпадающий список HA не показывает отдельные значки у строк:
-в этом релизе значок отображается у выбранного пресета.
+The standard HA dropdown does not display a separate icon beside each option.
+In this release, the icon is displayed for the selected preset.
 
 ## 0.1.1 — 2026-11-15
 
-Первый опубликованный релиз для установки и обновления через HACS.
+First published release for installation and updates through HACS.
 
-- Добавлен отдельный список «Пресет» с 19 обычными анимациями.
-- Обычные пресеты отделены от музыкальных эффектов и палитр. Выбор обычного
-  пресета выключает Music Mode; активный пресет подтверждается чтением состояния.
-- Сохранён выбор обычных эффектов в карточке светильника.
-- Добавлены кнопки установки через HACS и настройки в Home Assistant.
+- Add a separate Preset selector with 19 regular animations.
+- Separate regular presets from music effects and palettes. Choosing a regular
+  preset stops Music Mode; the active preset is confirmed by reading device state.
+- Keep regular effects available in the light card.
+- Add buttons for HACS installation and Home Assistant setup.
 
-В поставку входят питание, яркость, обычные пресеты, Music Mode, 6 музыкальных
-эффектов и 40 музыкальных палитр.
+Includes power, brightness, regular presets, Music Mode, 6 music effects and
+40 music palettes.
 
-Версия экспериментальная. На реальном устройстве с Mac проверены подключение,
-чтение и выключение. Работа через HA/ESPHome proxy и остальные команды новым
-клиентом ещё требуют проверки. Для 16 GIF-пресетов нужен MTU не меньше 512.
+This version is experimental. Connection, state reads and power off were tested
+on a real device from a Mac. HA/ESPHome proxy operation and the remaining commands
+with the new client still needed verification at the time of this release.
+The 16 GIF presets require an MTU of at least 512.
 
 ## 0.1.0 — 2026-11-15
 
-Начальная версия интеграции, распространявшаяся из ветки `main` без GitHub Release.
+Initial integration distributed from the `main` branch without a GitHub Release.
 
-- Добавлено локальное BLE-управление YLYDD-0053 через Bluetooth API HA.
-- Реализованы питание, яркость, обычные эффекты, музыкальный режим и его настройки.
-- Добавлены восстановленные GIF-пресеты, переводы и тесты с имитатором устройства.
+- Add local BLE control for YLYDD-0053 through the HA Bluetooth API.
+- Implement power, brightness, regular effects, Music Mode and its settings.
+- Include reconstructed GIF presets, translations and tests with a simulated device.
