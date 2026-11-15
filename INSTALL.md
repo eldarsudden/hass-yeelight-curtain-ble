@@ -40,6 +40,13 @@ After installation and restart, this button opens integration setup:
 
 [![Set up in Home Assistant](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=yeelight_curtain_ble)
 
+## Color controls
+
+Open the light's controls to use HA's standard color picker and brightness slider.
+Choosing a color fills the curtain and stops the current animation or Music Mode.
+A saturation of zero produces RGB white; color temperature is not supported.
+Native color control does not require a GIF upload or MTU 512.
+
 ## Connection settings
 
 After setup, open the curtain's **Configure** dialog under **Settings → Devices &

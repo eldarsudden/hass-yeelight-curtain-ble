@@ -32,8 +32,9 @@ async def test_fragmented_reads_and_separate_request_ids(peripheral):
         "bright": 9,
         "music": {"on": 0, "effect_id": 0},
         "effect": [71, 1012, {}],
+        "color_mode": 14,
     }
-    assert [r["id"] for r in peripheral.requests] == [1, 2, 3, 4]
+    assert [r["id"] for r in peripheral.requests] == [1, 2, 3, 4, 5]
     assert len(peripheral.callbacks) == 1
     assert not client._pending
     await client.disconnect()
@@ -138,3 +139,27 @@ def test_encoder_against_original_captures():
     if not count:
         pytest.skip("Private captures are not distributed")
     assert count >= 142
+
+
+async def test_uniform_hsv_readback_and_exit_to_effect(peripheral):
+    client = make_client(peripheral)
+    peripheral.color_mode = 3
+    peripheral.hue, peripheral.sat = 233, 100
+    peripheral.effect = [0, 0, {}]
+    state = await client.read_state()
+    assert state["color_mode"] == 3 and state["hs_color"] == (233, 100)
+    assert [r["params"] for r in peripheral.requests[-3:]] == [["color_mode"], ["hue"], ["sat"]]
+    peripheral.color_mode = 14
+    state = await client.read_state()
+    assert "hs_color" not in state
+    await client.disconnect()
+
+
+@pytest.mark.parametrize("hue,sat", [(360, 10), (-1, 10), (20, 101), (20, -1), ("not a number", 50)])
+async def test_invalid_hsv_readback_is_rejected(peripheral, hue, sat):
+    client = make_client(peripheral)
+    peripheral.color_mode = 3
+    peripheral.hue, peripheral.sat = hue, sat
+    with pytest.raises(CurtainError, match="Invalid state response"):
+        await client.read_state()
+    await client.disconnect()

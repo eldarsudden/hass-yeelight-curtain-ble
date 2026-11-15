@@ -144,12 +144,18 @@ class CurtainClient:
         bright = await self.request("get_prop", ["bright"])
         music = await self.request("get_prop", ["mic_music_mode"])
         effect = await self.request("get_fx_effect", [])
+        mode = await self.request("get_prop", ["color_mode"])
+        hue = saturation = None
+        if mode and str(mode[0]) == "3":
+            hue = await self.request("get_prop", ["hue"])
+            saturation = await self.request("get_prop", ["sat"])
         try:
             state = {
                 "power": power[0],
                 "bright": int(bright[0]),
                 "music": json.loads(music[0]),
                 "effect": effect,
+                "color_mode": int(mode[0]),
             }
             if state["power"] not in ("on", "off") or not 0 <= state["bright"] <= 100:
                 raise ValueError("Invalid power or brightness")
@@ -157,6 +163,15 @@ class CurtainClient:
                 raise ValueError("Invalid music state")
             if len(effect) < 2 or not all(isinstance(x, int) for x in effect[:2]):
                 raise ValueError("Invalid effect state")
+            if not 0 <= state["color_mode"] <= 255:
+                raise ValueError("Invalid color mode")
+            if state["color_mode"] == 3:
+                if any(isinstance(value, bool) or not isinstance(value, (str, int)) for value in (hue[0], saturation[0])):
+                    raise ValueError("Invalid HSV color")
+                hs = (int(hue[0]), int(saturation[0]))
+                if not 0 <= hs[0] < 360 or not 0 <= hs[1] <= 100:
+                    raise ValueError("Invalid HSV color")
+                state["hs_color"] = hs
         except (ValueError, IndexError, TypeError) as error:
             raise CurtainError(f"Invalid state response: {error}") from error
         return state

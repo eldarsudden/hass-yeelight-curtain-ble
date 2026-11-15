@@ -6,6 +6,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import math
 from copy import deepcopy
 from datetime import timedelta
 from functools import partial
@@ -130,6 +131,24 @@ class CurtainCoordinator(DataUpdateCoordinator[dict]):
                 effect = json.loads(props["fx_effect"])
                 if all(isinstance(effect.get(k), int) for k in ("effect_id", "custom_id")):
                     state["effect"] = [effect["effect_id"], effect["custom_id"]]
+            if "color_mode" in props:
+                mode = int(props["color_mode"])
+                if not 0 <= mode <= 255:
+                    raise ValueError("Invalid color mode")
+                state["color_mode"] = mode
+                if mode != 3:
+                    state.pop("hs_color", None)
+            if state.get("color_mode") == 3 and ("hue" in props or "sat" in props):
+                previous = state.get("hs_color", (None, None))
+                hue = props.get("hue", previous[0])
+                saturation = props.get("sat", previous[1])
+                if hue is not None and saturation is not None:
+                    if any(isinstance(value, bool) or not isinstance(value, (str, int)) for value in (hue, saturation)):
+                        raise ValueError("Invalid HSV color")
+                    hs = (int(hue), int(saturation))
+                    if not 0 <= hs[0] < 360 or not 0 <= hs[1] <= 100:
+                        raise ValueError("Invalid HSV color")
+                    state["hs_color"] = hs
         except (ValueError, TypeError, AttributeError):
             _LOGGER.debug("Ignoring malformed properties notification")
             return
@@ -171,7 +190,21 @@ class CurtainCoordinator(DataUpdateCoordinator[dict]):
 
         await self._execute(operation, lambda state: state["power"] == target)
 
-    async def async_light_on(self, brightness: int | None, effect: str | None) -> None:
+    async def async_light_on(
+        self, brightness: int | None, effect: str | None, hs_color: tuple | None = None
+    ) -> None:
+        if hs_color is not None:
+            if effect is not None:
+                raise HomeAssistantError("Choose either a color or a preset")
+            if (
+                not isinstance(hs_color, (tuple, list))
+                or len(hs_color) != 2
+                or any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) for v in hs_color)
+                or not 0 <= hs_color[0] <= 360
+                or not 0 <= hs_color[1] <= 100
+            ):
+                raise HomeAssistantError("Invalid hue or saturation")
+            hs_color = (round(hs_color[0]) % 360, round(hs_color[1]))
         if effect is not None and effect not in self.presets:
             raise HomeAssistantError(f"Unknown effect: {effect}")
         preset = self.presets.get(effect)
@@ -187,6 +220,9 @@ class CurtainCoordinator(DataUpdateCoordinator[dict]):
             await self.client.set("set_power", ["on", "smooth", 500])
             if brightness is not None:
                 await self.client.set("set_scene", ["bright", brightness, 0])
+            if hs_color is not None:
+                await self.client.set("set_ps", ["mic_music_mode", '{"on":0}'])
+                await self.client.set("set_hsv", [*hs_color, "smooth", 0])
             if preset is not None:
                 if self.data and self.data["music"].get("on"):
                     await self.client.set("set_ps", ["mic_music_mode", '{"on":0}'])
@@ -206,6 +242,17 @@ class CurtainCoordinator(DataUpdateCoordinator[dict]):
             return (
                 state["power"] == "on"
                 and (brightness is None or state["bright"] == brightness)
+                and (
+                    hs_color is None
+                    or (
+                        not state["music"].get("on")
+                        and state.get("color_mode") == 3
+                        and state["effect"][:2] == [0, 0]
+                        and state.get("hs_color") is not None
+                        and state["hs_color"][1] == hs_color[1]
+                        and (hs_color[1] == 0 or state["hs_color"][0] == hs_color[0])
+                    )
+                )
                 and (
                     preset is None
                     or (

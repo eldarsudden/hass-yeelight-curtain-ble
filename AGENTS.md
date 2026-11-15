@@ -31,7 +31,14 @@ and development commands out of the README.
 - Actual HA/ESPHome proxy operation still needs verification. Other regular
   presets and music palettes are supported by stock-app captures, but have not
   been individually tested on the device with the new client.
-- OTA, grouping curtains and Pure Color Mode are not implemented.
+- A later 2026-11-15 capture contains 20 acknowledged native `set_hsv` commands,
+  HSV/RGB notifications and a recorded orientation command. Direct Mac tests
+  verified RGB primaries and white by reading HSV/RGB. The integration client,
+  coordinator and light entity then verified ten color/brightness, preset, music
+  and on-demand operations over Mac BLE. Original color/brightness were restored.
+  This followed the user's reset and app setup; it does not verify fresh color
+  provisioning without the app or actual HA/proxy operation.
+- OTA and grouping curtains are not implemented.
 
 Keep capture evidence, simulated tests and hardware verification distinct in the
 documentation. Do not claim support for other models or HA versions without testing.
@@ -93,14 +100,34 @@ Do not substitute a known effect for an unknown music effect. Enabling Music
 Mode does not itself turn on the light; a regular effect stops Music Mode.
 
 Regular animations are exposed by a separate Preset `select` entity and the
-light's effects. Both show the same confirmed preset from device state. The
-regular preset is unknown while music is active. Keep the 19 regular presets
+light's effects. The regular selector and light's effect list retain the same 19 preset options.
+The regular preset is unknown while music is active. The light's `effect` readout
+may use non-selectable `Music mode`, `Custom GIF` or `Unknown effect` status labels
+so HA accepts `ColorMode.BRIGHTNESS` during those animations. These labels must
+never be added to regular or music option lists. Keep the 19 regular presets
 separate from the six music effects and 40 palettes.
 
 Each regular preset's semantic MDI icon lives in `catalog.json`. The Preset
 entity shows the confirmed animation's icon, or a generic animation icon for
 Music Mode or an unknown preset. Preserve option values and preset names: users
 may already depend on them in automations.
+
+## Native solid color
+
+Expose `ColorMode.HS` on the existing light. Read `color_mode` on every poll and
+read `hue`/`sat` only in mode 3. Only report a uniform color with mode 3, inactive
+music and effect marker `[0, 0]`; discard stale color values on mode changes.
+Animation mode 14 is not a uniform color. Report `ColorMode.BRIGHTNESS` while an
+effect/status label is active so HA keeps brightness without inventing a color.
+
+Use the captured `set_hsv [hue, saturation, "smooth", 0]`; keep native brightness
+through `set_scene ["bright", percent, 0]`. Color requests turn on the light and
+stop music. Verify the read mode, HS, power and requested brightness before
+returning success. Hue is irrelevant for saturation zero. Round HA's fractional
+HS inputs to firmware integers and normalize 360 to 0. Reject simultaneous effect
+and color requests before BLE writes. Preserve the standard RGB-to-HS conversion
+in HA; do not implement an unverified `set_rgb` command or generate a color GIF.
+Do not infer white-temperature support from RGB white.
 
 ## Custom GIF library
 
@@ -165,6 +192,7 @@ Confirmed methods:
 | --- | --- |
 | Power | `set_power`, `["on" / "off", "smooth", 500]` |
 | Brightness | `set_scene`, `["bright", percent, 0]` |
+| Solid color | `set_hsv`, `[hue, saturation, "smooth", 0]` |
 | Regular effect | `set_fx_effect`, `[effect_id, custom_id, 1, options]` |
 | Music | `set_ps`, `["mic_music_mode", json_string]` |
 

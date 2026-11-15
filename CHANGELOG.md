@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.5.0 — 2026-11-15
+
+- Add a native color picker to the existing light entity using HA's hue/saturation
+  color mode. Standard HA RGB action parameters are converted to HSV by HA.
+- Implement the captured `set_hsv [hue, saturation, "smooth", 0]` command. A color
+  request turns on the light and stops Music Mode; regular presets remain separate.
+- Read `color_mode`, `hue` and `sat` from the device and process color notifications.
+  Reject invalid values and unconfirmed changes instead of publishing a requested color.
+- Preserve brightness in both solid-color and animation modes. Report descriptive
+  status labels for music, custom GIFs and unknown effects without adding them to
+  the 19 selectable regular presets.
+- Support native color with persistent connections enabled or disabled. No GIF
+  upload, MTU 512 or new dashboard resource is required for the color picker.
+- Verify red, green, blue and RGB white through direct Mac BLE commands and RGB
+  readback. Verify ten operations through the integration's client, coordinator
+  and light entity: color/brightness, presets, music and on-demand reconnects.
+  Restore the initial device color and brightness after testing.
+
+Actual HA/ESPHome proxy hardware operation still needs verification. White is
+mixed RGB, not white color-temperature control. Simultaneous color and preset
+requests are rejected before sending commands.
+
 ## 0.4.0 — 2026-11-15
 
 - Add a private custom GIF library per curtain, imported using HA's native file

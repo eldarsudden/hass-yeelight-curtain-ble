@@ -8,13 +8,15 @@ using a local adapter or an ESPHome Bluetooth Proxy.
 
 The integration provides:
 
-- Power and brightness controls.
+- Power, brightness and a native color picker for a single color across the curtain.
 - 19 regular animation presets, with an optional dashboard picker showing an icon beside every preset.
 - Music Mode using the curtain's microphone, with 6 effects and 40 palettes.
 
 **Experimental support.** After a factory reset, direct control from a Mac was
 verified for connection, power, brightness, two regular presets and all six music
-effects, without the Yeelight app. Operation through Home Assistant and an
+effects, without the Yeelight app. Native solid-color commands were subsequently
+verified from a Mac, including readback and transitions to/from presets and music.
+Operation through Home Assistant and an
 ESPHome proxy still needs hardware verification. Only YLYDD-0053 (product ID
 16787461) has been tested.
 
@@ -110,7 +112,7 @@ adds a separate GIF selector:
 
 | Entity | Controls |
 | --- | --- |
-| Light | Power, brightness from 1–100%, regular effects |
+| Light | Power, brightness from 1–100%, a single color, regular effects |
 | Preset | A separate list of 19 regular animations, including Christmas Tree, Rainbow and Bonfire |
 | Music Mode | Sound response using the curtain's microphone |
 | Music effect | Sound Wave, Shine, Spectrum, Converge, Bounce, Breath |
@@ -128,6 +130,42 @@ With Music Mode off, effect and palette changes are saved for the next time you
 enable it. With Music Mode on, changes apply immediately. The palette shows the
 saved preference: its current colors cannot be read from the curtain.
 The initial music selection is **Bounce / Father's Day**.
+
+## Single color
+
+Open the curtain's light controls in Home Assistant and use the standard color
+picker. The chosen color fills the entire curtain. Brightness remains adjustable.
+Choosing a color turns on the light and stops Music Mode or the current animation;
+choosing a regular preset starts that animation again.
+
+For white, move saturation to zero. This is white mixed from the RGB LEDs, not
+adjustable white color temperature. Color commands use the curtain's native HSV
+mode; they do not upload a GIF or need the large MTU used by animation uploads.
+The displayed hue and saturation come from device readback and notifications.
+During an animation, no uniform color is reported. The light's mode readout may
+show **Music mode**, **Custom GIF** or **Unknown effect**; these are status labels,
+not additional options in the regular preset list. Brightness stays available.
+
+The standard HA action accepts RGB colors too and converts them to the supported
+hue/saturation format:
+
+```yaml
+action: light.turn_on
+target:
+  entity_id: light.your_curtain
+data:
+  rgb_color: [0, 255, 0]
+  brightness_pct: 50
+```
+
+Use either a color or a regular effect in one call. A request containing both is
+rejected before any device writes.
+
+Native color was verified using this integration's client, coordinator and light
+entity over a Mac's Bluetooth: red, green, blue, white, brightness changes,
+transitions to/from Rainbow and Music Mode, and on-demand reconnects. The initial
+color and brightness were restored afterward. This is separate from actual
+HA/ESPHome proxy hardware verification, which is still pending.
 
 ## Preset picker with icons
 
@@ -230,8 +268,8 @@ Uploads require large BLE packets: **ATT MTU 512** and support for 509-byte writ
 on the adapter or proxy. If a GIF upload fails, check that connection's
 capabilities. Power, brightness, built-in effects and Music Mode do not need GIF uploads.
 
-Pure Color Mode, importing non-GIF images, grouping multiple curtains and firmware
-updates are not implemented. Rainbow, the Christmas Tree GIF transfer and switching all
+Importing non-GIF images, grouping multiple curtains and firmware updates are not
+implemented. Rainbow, the Christmas Tree GIF transfer and switching all
 six music effects with the Tranquil palette were tested on the device. Other
 presets and palettes were reconstructed from app recordings and have not been
 individually tested with the new client. Visual response to sound was not assessed.

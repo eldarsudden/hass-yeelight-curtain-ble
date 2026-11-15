@@ -24,6 +24,9 @@ class Peripheral:
         self.bright = 9
         self.music = {"on": 0, "effect_id": 0}
         self.effect = [71, 1012, {}]
+        self.color_mode = 14
+        self.hue = 0
+        self.sat = 0
         self.disconnected_callback = None
         self.disconnects = 0
 
@@ -54,6 +57,9 @@ class Peripheral:
                     "power": self.power,
                     "bright": str(self.bright),
                     "mic_music_mode": json.dumps(self.music),
+                    "color_mode": str(self.color_mode),
+                    "hue": str(self.hue),
+                    "sat": str(self.sat),
                 }[params[0]]
             ]
         elif method == "get_fx_effect":
@@ -69,8 +75,16 @@ class Peripheral:
             assert params[0] == "mic_music_mode" and isinstance(params[1], str)
             self.music = json.loads(params[1])
             result = ["ok"]
+        elif method == "set_hsv":
+            self.hue, self.sat, transition, duration = params
+            assert transition == "smooth" and duration == 0
+            self.color_mode = 3
+            self.effect = [0, 0, {}]
+            self.music = {"on": 0, "effect_id": 0}
+            result = ["ok"]
         elif method == "set_fx_effect":
             self.effect = params[:2] + [params[3]]
+            self.color_mode = 14
             result = ["ok"]
         else:
             result = [57]

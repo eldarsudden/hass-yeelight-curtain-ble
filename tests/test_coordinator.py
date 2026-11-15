@@ -155,7 +155,7 @@ async def test_select_regular_preset_exits_music_without_changing_music_preferen
     light = CurtainLight(coordinator)
     await coordinator.async_music_preference(OPT_MUSIC_EFFECT, "Shine")
     await coordinator.async_music(True)
-    assert preset.current_option is None and light.effect is None
+    assert preset.current_option is None and light.effect == "Music mode"
     before = len(peripheral.requests)
     await preset.async_select_option("Christmas Tree")
     assert preset.current_option == light.effect == "Christmas Tree"
@@ -277,6 +277,10 @@ async def test_custom_gif_upload_activation_and_identity_are_separate(coordinato
     assert not peripheral.is_connected
     assert peripheral.file_packets[-1] == b"\x04"
     assert coordinator.entry.options[OPT_LAST_CUSTOM_GIF] == "My animation"
+    light = CurtainLight(coordinator)
+    assert light.effect == "Custom GIF" and light.state_attributes["brightness"] is not None
+    await light.async_turn_on(hs_color=(202, 100))
+    assert light.hs_color == (202, 100) and entity.current_option is None
     await coordinator.async_light_on(None, "Christmas Tree")
     assert coordinator.preset == "Christmas Tree"
     assert entity.current_option is None  # Allow selecting the same GIF again after a preset.
@@ -302,3 +306,65 @@ async def test_failed_custom_transfer_never_activates_or_updates_last_request(co
     assert not any(r["method"] == "set_fx_effect" for r in peripheral.requests)
     assert coordinator.entry.options[OPT_LAST_CUSTOM_GIF] == "Old"
     assert not peripheral.is_connected
+
+
+async def test_native_color_picker_and_brightness_between_modes(coordinator, peripheral):
+    from homeassistant.components.light import ColorMode
+
+    light = CurtainLight(coordinator)
+    assert light.supported_color_modes == {ColorMode.HS}
+    assert light.color_mode == ColorMode.BRIGHTNESS
+    await light.async_turn_on()
+    assert light.state_attributes["brightness"] is not None
+    await coordinator.async_music(True)
+    await light.async_turn_on(hs_color=(120, 100), brightness=128)
+    assert light.color_mode == ColorMode.HS
+    assert light.hs_color == (120, 100) and light.effect is None
+    assert coordinator.data["bright"] == 50 and coordinator.data["music"]["on"] == 0
+    assert light.state_attributes["hs_color"] == (120, 100)
+    assert light.state_attributes["rgb_color"] == (0, 255, 0)
+    assert not peripheral.file_packets
+    hsv_writes = len([r for r in peripheral.requests if r["method"] == "set_hsv"])
+    await light.async_turn_on(brightness=64)
+    assert coordinator.data["bright"] == 25 and light.hs_color == (120, 100)
+    assert len([r for r in peripheral.requests if r["method"] == "set_hsv"]) == hsv_writes
+    await light.async_turn_on(effect="Rainbow")
+    assert light.effect == "Rainbow" and light.hs_color is None
+    assert light.color_mode == ColorMode.BRIGHTNESS
+    assert light.state_attributes["brightness"] is not None
+    await coordinator.async_music(True)
+    assert light.effect == "Music mode"
+    assert light.state_attributes["brightness"] is not None
+    assert "Music mode" not in light.effect_list and len(light.effect_list) == 19
+    coordinator.persistent_connection = False
+    await light.async_turn_on(hs_color=(360, 0))
+    assert light.hs_color == (0, 0) and not peripheral.is_connected
+
+
+async def test_external_color_notifications_and_malformed_values(coordinator):
+    light = CurtainLight(coordinator)
+    coordinator._props({"color_mode": 3, "hue": 296, "sat": 100, "fx_effect": '{"effect_id":0,"custom_id":0}', "mic_music_mode": '{"on":0}'})
+    assert light.hs_color == (296, 100)
+    coordinator._props({"hue": "233"})
+    assert light.hs_color == (233, 100)
+    coordinator._props({"hue": "999"})
+    assert light.hs_color == (233, 100)
+    coordinator._props({"hue": True})
+    assert light.hs_color == (233, 100)
+    coordinator._props({"color_mode": 14, "fx_effect": '{"effect_id":39,"custom_id":0}'})
+    assert light.hs_color is None and "hs_color" not in coordinator.data
+
+
+async def test_color_ack_requires_matching_readback(coordinator):
+    coordinator.client.set = AsyncMock()
+    with pytest.raises(HomeAssistantError, match="did not confirm"):
+        await CurtainLight(coordinator).async_turn_on(hs_color=(120, 100))
+    assert "hs_color" not in coordinator.data
+
+
+@pytest.mark.parametrize("color,effect", [((float('nan'), 50), None), ((0, 101), None), ((-1, 100), None), ((True, 50), None), ((0, 50), "Rainbow")])
+async def test_bad_color_requests_send_no_commands(coordinator, peripheral, color, effect):
+    before = len(peripheral.requests)
+    with pytest.raises(HomeAssistantError):
+        await coordinator.async_light_on(None, effect, color)
+    assert len(peripheral.requests) == before
