@@ -1,0 +1,12 @@
+"""Constants for the recorded YLYDD-0053 protocol."""
+
+DOMAIN = "yeelight_curtain_ble"
+JSON_WRITE = "0000ae3b-0000-1000-8000-00805f9b34fb"
+JSON_NOTIFY = "0000ae3c-0000-1000-8000-00805f9b34fb"
+FILE_WRITE = "0000ae3d-0000-1000-8000-00805f9b34fb"
+FILE_NOTIFY = "0000ae3e-0000-1000-8000-00805f9b34fb"
+NAME_PREFIX = "YLBT_CURT_"
+OPT_MUSIC_EFFECT = "music_effect"
+OPT_MUSIC_PALETTE = "music_palette"
+DEFAULT_MUSIC_EFFECT = "Bounce"
+DEFAULT_MUSIC_PALETTE = "Father's Day"

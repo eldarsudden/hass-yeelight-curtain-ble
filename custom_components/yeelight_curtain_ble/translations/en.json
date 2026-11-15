@@ -1,0 +1,42 @@
+{
+  "title": "Yeelight Curtain BLE",
+  "config": {
+    "flow_title": "{name}",
+    "step": {
+      "user": {
+        "title": "Yeelight Curtain BLE",
+        "description": "Choose a configured YLYDD-0053 curtain visible to a connectable Bluetooth adapter or ESPHome proxy. Close Yeelight on the phone.",
+        "data": {
+          "address": "Curtain"
+        }
+      },
+      "confirm": {
+        "title": "Connect {name}",
+        "description": "Read the state to verify the connection. Close Yeelight on the phone first."
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot connect or read the curtain. Close the phone app and check proxy reachability and free connection slots."
+    },
+    "abort": {
+      "already_configured": "This curtain is already configured.",
+      "not_supported": "This Bluetooth device is not supported.",
+      "no_devices_found": "No YLYDD-0053 curtain is visible through a connectable Bluetooth adapter or proxy."
+    }
+  },
+  "entity": {
+    "switch": {
+      "music_mode": {
+        "name": "Music mode"
+      }
+    },
+    "select": {
+      "music_effect": {
+        "name": "Music effect"
+      },
+      "music_palette": {
+        "name": "Music palette"
+      }
+    }
+  }
+}

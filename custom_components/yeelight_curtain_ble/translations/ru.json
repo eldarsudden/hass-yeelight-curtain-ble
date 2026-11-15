@@ -1,0 +1,42 @@
+{
+  "title": "Yeelight Curtain BLE",
+  "config": {
+    "flow_title": "{name}",
+    "step": {
+      "user": {
+        "title": "Yeelight Curtain BLE",
+        "description": "Выберите настроенную гирлянду YLYDD-0053, доступную через Bluetooth-адаптер или ESPHome proxy с активными соединениями. Закройте Yeelight на телефоне.",
+        "data": {
+          "address": "Гирлянда"
+        }
+      },
+      "confirm": {
+        "title": "Подключить {name}",
+        "description": "Проверим связь чтением состояния. Перед этим закройте Yeelight на телефоне."
+      }
+    },
+    "error": {
+      "cannot_connect": "Не удалось подключиться или прочитать состояние. Закройте приложение телефона, проверьте доступность proxy и свободные слоты соединений."
+    },
+    "abort": {
+      "already_configured": "Эта гирлянда уже настроена.",
+      "not_supported": "Это Bluetooth-устройство не поддерживается.",
+      "no_devices_found": "Гирлянда YLYDD-0053 не найдена через Bluetooth-адаптер или proxy с активными соединениями."
+    }
+  },
+  "entity": {
+    "switch": {
+      "music_mode": {
+        "name": "Музыкальный режим"
+      }
+    },
+    "select": {
+      "music_effect": {
+        "name": "Музыкальный эффект"
+      },
+      "music_palette": {
+        "name": "Музыкальная палитра"
+      }
+    }
+  }
+}
