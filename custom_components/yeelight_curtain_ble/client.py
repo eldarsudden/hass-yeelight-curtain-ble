@@ -10,7 +10,7 @@ from typing import Any
 from bleak import BleakClient
 from bleak.exc import BleakError
 
-from .const import FILE_NOTIFY, FILE_WRITE, JSON_NOTIFY, JSON_WRITE
+from .const import FILE_NOTIFY, FILE_WRITE, JSON_NOTIFY, JSON_WRITE, MOUNTING_SIDES
 from .protocol import FILE_ACK, encode_request, gif_upload_packets
 
 
@@ -139,6 +139,28 @@ class CurtainClient:
         if await self.request(method, params) != ["ok"]:
             raise CurtainError(f"{method} was not acknowledged")
 
+    async def read_setup(self) -> dict[str, int]:
+        """Read the device's placement and initialization flag, not a local preference."""
+        setup = {}
+        for name in ("adapter_set", "adapter_side"):
+            result = await self.request("get_prop", [name])
+            if len(result) != 1 or isinstance(result[0], bool) or str(result[0]) not in ("0", "1"):
+                raise CurtainError(f"Invalid {name} response")
+            setup[name] = int(result[0])
+        return setup
+
+    async def configure_mounting(self, side: str) -> dict[str, int]:
+        """Apply a user-selected placement and require both flags to confirm it."""
+        if side not in MOUNTING_SIDES:
+            raise CurtainError("Unknown mounting side")
+        expected = {"adapter_set": 1, "adapter_side": MOUNTING_SIDES[side]}
+        if (current := await self.read_setup()) == expected:
+            return current
+        await self.set("set_ps", ["adapter_side", MOUNTING_SIDES[side]])
+        if (observed := await self.read_setup()) != expected:
+            raise CurtainError("Curtain did not confirm the mounting side")
+        return observed
+
     async def read_state(self) -> dict[str, Any]:
         power = await self.request("get_prop", ["power"])
         bright = await self.request("get_prop", ["bright"])
@@ -174,6 +196,7 @@ class CurtainClient:
                 state["hs_color"] = hs
         except (ValueError, IndexError, TypeError) as error:
             raise CurtainError(f"Invalid state response: {error}") from error
+        state.update(await self.read_setup())
         return state
 
     async def upload(self, gif: bytes) -> None:

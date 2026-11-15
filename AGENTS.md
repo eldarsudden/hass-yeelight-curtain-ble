@@ -112,6 +112,35 @@ entity shows the confirmed animation's icon, or a generic animation icon for
 Music Mode or an unknown preset. Preserve option values and preset names: users
 may already depend on them in automations.
 
+## Local initial setup
+
+Read `adapter_set` and `adapter_side` with `get_prop`; accept only 0/1. An unset
+`adapter_set` means the side has not been configured: do not interpret its default
+`adapter_side` as a confirmed Left selection. The captured command is
+`set_ps ["adapter_side", 1]` for Right (confirmed by the user); Left uses 0.
+Both values were accepted and read back on hardware.
+
+For a new/reset curtain, the config flow must prompt for placement with no
+preselected value before any setup writes. Use `configure_mounting`, verify
+`adapter_set == 1` and the requested side, then create the entry. Preserve
+already configured placement. An explicit retry reads first and avoids another
+write when the requested setup is already confirmed. Always close flow connections.
+
+Expose Mounting side as a configuration select to repair an existing entry after
+reset without removing it. Serialize writes and full readback through the
+coordinator, respect connection lifetime settings and preserve unrelated options.
+Never provision automatically on startup or polling. Do not add a reset command,
+account dependency, explicit pairing or captured binary initialization replay.
+
+On 2026-11-15 the user reset the curtain and did not open Yeelight. The actual
+config flow over a direct Mac connector read `adapter_set=0`, showed placement
+before any writes, configured Right and created an entry. The actual coordinator
+and light then verified red at 50%, green, blue, Rainbow and power off; a fresh
+connection confirmed setup flags 1/1. Five control steps passed; the curtain was
+left off. The test substitutes HA Bluetooth discovery/connection and flow-manager
+bookkeeping; it does not test the real HA UI/server or ESPHome proxy. Keep raw
+requests, private addresses and the hardware report outside the public export.
+
 ## Native solid color
 
 Expose `ColorMode.HS` on the existing light. Read `color_mode` on every poll and

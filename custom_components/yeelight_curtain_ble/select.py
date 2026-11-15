@@ -1,8 +1,9 @@
 """Separate regular presets from music effects and desired palettes."""
 
 from homeassistant.components.select import SelectEntity
+from homeassistant.const import EntityCategory
 
-from .const import OPT_MUSIC_EFFECT, OPT_MUSIC_PALETTE
+from .const import MOUNTING_SIDES, OPT_MUSIC_EFFECT, OPT_MUSIC_PALETTE
 from .custom_gif import GIF_EFFECT, OPT_CUSTOM_GIFS, OPT_CUSTOM_SLOT, OPT_LAST_CUSTOM_GIF
 from .entity import CurtainEntity
 
@@ -15,6 +16,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
         PresetSelect(coordinator),
         MusicSelect(coordinator, OPT_MUSIC_EFFECT, list(coordinator.catalog["music_effects"])),
         MusicSelect(coordinator, OPT_MUSIC_PALETTE, list(coordinator.catalog["palettes"])),
+        MountingSideSelect(coordinator),
     ]
     if coordinator.entry.options.get(OPT_CUSTOM_GIFS):
         entities.append(CustomGIFSelect(coordinator))
@@ -93,3 +95,25 @@ class CustomGIFSelect(CurtainEntity, SelectEntity):
 
     async def async_select_option(self, option):
         await self.coordinator.async_custom_gif(option)
+
+
+class MountingSideSelect(CurtainEntity, SelectEntity):
+    """Set or repair device placement without resetting or re-adding the entry."""
+
+    _attr_translation_key = "mounting_side"
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_icon = "mdi:swap-horizontal"
+    _attr_options = list(MOUNTING_SIDES)
+
+    def __init__(self, coordinator):
+        super().__init__(coordinator, "mounting_side")
+
+    @property
+    def current_option(self):
+        state = self.coordinator.data
+        if not state.get("adapter_set"):
+            return None
+        return next((name for name, value in MOUNTING_SIDES.items() if value == state["adapter_side"]), None)
+
+    async def async_select_option(self, option):
+        await self.coordinator.async_mounting_side(option)

@@ -5,7 +5,7 @@
     "step": {
       "user": {
         "title": "Yeelight Curtain BLE",
-        "description": "Choose a configured YLYDD-0053 curtain visible to a connectable Bluetooth adapter or ESPHome proxy. Close Yeelight on the phone.",
+        "description": "Choose a YLYDD-0053 curtain visible to a connectable Bluetooth adapter or ESPHome proxy. New or reset curtains will be offered a mounting-side step. Close Yeelight apps on the phone.",
         "data": {
           "address": "Curtain"
         }
@@ -13,10 +13,18 @@
       "confirm": {
         "title": "Connect {name}",
         "description": "Read the state to verify the connection. Close Yeelight on the phone first."
+      },
+      "placement": {
+        "title": "Initial curtain setup",
+        "description": "The curtain is not configured yet. Choose the controller/power-side placement you would select in the Yeelight app. Submitting writes this setting over BLE and verifies it by reading it back. No Yeelight account or app is used for this step.",
+        "data": {
+          "mounting_side": "Mounting side"
+        }
       }
     },
     "error": {
-      "cannot_connect": "Cannot connect or read the curtain. Close the phone app and check proxy reachability and free connection slots."
+      "cannot_connect": "Cannot connect or read the curtain. Close the phone app and check proxy reachability and free connection slots.",
+      "setup_failed": "Could not confirm the mounting side. Release other BLE connections, check reachability and submit again. The device has not been added."
     },
     "abort": {
       "already_configured": "This curtain is already configured.",
@@ -42,6 +50,13 @@
       },
       "custom_gif": {
         "name": "GIF — last requested"
+      },
+      "mounting_side": {
+        "name": "Mounting side",
+        "state": {
+          "left": "Left",
+          "right": "Right"
+        }
       }
     }
   },
@@ -61,6 +76,14 @@
     "error": {
       "gif_name_and_file": "Enter both a GIF name and a GIF file.",
       "invalid_gif": "Could not import the GIF. Choose the file again: use a valid 19×25 GIF with at most 48 frames and 128520 bytes, and a name of 1–64 characters."
+    }
+  },
+  "selector": {
+    "mounting_side": {
+      "options": {
+        "left": "Left",
+        "right": "Right"
+      }
     }
   }
 }

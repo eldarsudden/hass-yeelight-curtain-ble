@@ -1,4 +1,4 @@
-"""Discover the curtain through HA and verify a read before creating an entry."""
+"""Discover the curtain and verify state or explicitly chosen initial placement."""
 
 import logging
 from functools import partial
@@ -15,7 +15,13 @@ from homeassistant.core import callback
 from homeassistant.helpers import selector
 
 from .client import CurtainClient
-from .const import DEFAULT_PERSISTENT_CONNECTION, DOMAIN, NAME_PREFIX, OPT_PERSISTENT_CONNECTION
+from .const import (
+    DEFAULT_PERSISTENT_CONNECTION,
+    DOMAIN,
+    MOUNTING_SIDES,
+    NAME_PREFIX,
+    OPT_PERSISTENT_CONNECTION,
+)
 from .coordinator import ERRORS, connect
 from .custom_gif import OPT_CUSTOM_GIFS, OPT_LAST_CUSTOM_GIF, import_uploaded_gif
 
@@ -33,6 +39,7 @@ class CurtainConfigFlow(ConfigFlow, domain=DOMAIN):
     def __init__(self):
         self._devices = {}
         self._discovered_address = None
+        self._pending_address = None
 
     async def async_step_bluetooth(self, discovery_info):
         if not discovery_info.connectable or not discovery_info.name.startswith(NAME_PREFIX):
@@ -47,15 +54,53 @@ class CurtainConfigFlow(ConfigFlow, domain=DOMAIN):
     async def _validate(self, address):
         client = CurtainClient(partial(connect, self.hass, address))
         try:
-            await client.read_state()
+            return await client.read_state()
         finally:
             await client.disconnect()
 
     async def _create(self, address):
         await self.async_set_unique_id(address)
         self._abort_if_unique_id_configured()
-        await self._validate(address)
+        state = await self._validate(address)
+        if not state["adapter_set"]:
+            self._pending_address = address
+            return await self.async_step_placement()
         return self.async_create_entry(title=self._devices[address], data={CONF_ADDRESS: address})
+
+    async def async_step_placement(self, user_input=None):
+        """Initialize an unconfigured curtain only after an explicit placement choice."""
+        if self._pending_address is None:
+            return self.async_abort(reason="no_devices_found")
+        errors = {}
+        if user_input is not None:
+            side = user_input["mounting_side"]
+            if side not in MOUNTING_SIDES:
+                errors["base"] = "setup_failed"
+            else:
+                address = self._pending_address
+                client = CurtainClient(partial(connect, self.hass, address))
+                try:
+                    await self.async_set_unique_id(address)
+                    self._abort_if_unique_id_configured()
+                    await client.configure_mounting(side)
+                    await client.read_state()
+                except ERRORS:
+                    errors["base"] = "setup_failed"
+                else:
+                    return self.async_create_entry(title=self._devices[address], data={CONF_ADDRESS: address})
+                finally:
+                    await client.disconnect()
+        return self.async_show_form(
+            step_id="placement",
+            data_schema=schema.Schema({
+                schema.Required("mounting_side"): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=list(MOUNTING_SIDES), translation_key="mounting_side"
+                    )
+                ),
+            }),
+            errors=errors,
+        )
 
     async def async_step_confirm(self, user_input=None):
         errors = {}

@@ -38,7 +38,7 @@ async def test_manual_flow_lists_discovered_connectable_device(flow):
 async def test_discovery_requires_confirm_and_read(flow):
     result = await flow.async_step_bluetooth(discovery())
     assert result["type"] == "form" and result["step_id"] == "confirm"
-    flow._validate = AsyncMock()
+    flow._validate = AsyncMock(return_value={"adapter_set": 1, "adapter_side": 1})
     result = await flow.async_step_confirm({})
     assert result["type"] == "create_entry"
     assert result["data"]["address"] == discovery().address
@@ -118,3 +118,73 @@ async def test_options_import_remove_and_preserve_settings(tmp_path):
         result = await options.async_step_init({"persistent_connection": True, "gif_name": "New", "gif_file": "upload"})
     assert result["type"] == "form" and result["errors"] == {"base": "invalid_gif"}
     assert entry.options[OPT_CUSTOM_GIFS] == {"Old": old}
+
+
+@pytest.mark.parametrize("source,side", [("bluetooth", "right"), ("user", "left")])
+async def test_unconfigured_curtain_requires_explicit_placement(flow, peripheral, source, side):
+    peripheral.adapter_set = 0
+    peripheral.adapter_side = 0
+
+    async def connect(_hass, _address, callback):
+        peripheral.is_connected = True
+        peripheral.disconnected_callback = callback
+        return peripheral
+
+    with (
+        patch("custom_components.yeelight_curtain_ble.config_flow.connect", connect),
+        patch("custom_components.yeelight_curtain_ble.config_flow.bluetooth.async_discovered_service_info", return_value=[discovery()]),
+    ):
+        if source == "bluetooth":
+            await flow.async_step_bluetooth(discovery())
+            result = await flow.async_step_confirm({})
+        else:
+            result = await flow.async_step_user({"address": discovery().address})
+        assert result["type"] == "form" and result["step_id"] == "placement"
+        assert not any(r["method"].startswith("set_") for r in peripheral.requests)
+        assert not peripheral.is_connected
+        result = await flow.async_step_placement({"mounting_side": side})
+    assert result["type"] == "create_entry" and result["data"] == {"address": discovery().address}
+    assert peripheral.adapter_set == 1 and peripheral.adapter_side == int(side == "right")
+    assert not peripheral.is_connected
+    assert peripheral.power == "off" and peripheral.bright == 9
+
+
+async def test_failed_placement_keeps_form_open_and_retry_uses_readback(flow, peripheral):
+    from custom_components.yeelight_curtain_ble.client import CurtainClient
+
+    peripheral.adapter_set = 0
+    async def connect(_hass, _address, callback):
+        peripheral.is_connected = True
+        peripheral.disconnected_callback = callback
+        return peripheral
+
+    with patch("custom_components.yeelight_curtain_ble.config_flow.connect", connect):
+        await flow.async_step_bluetooth(discovery())
+        result = await flow.async_step_confirm({})
+        assert result["step_id"] == "placement"
+        with patch.object(CurtainClient, "set", AsyncMock()):
+            result = await flow.async_step_placement({"mounting_side": "right"})
+        assert result["type"] == "form" and result["errors"] == {"base": "setup_failed"}
+        assert not peripheral.is_connected
+        # A previous write can have succeeded even if its acknowledgement was lost.
+        peripheral.adapter_set, peripheral.adapter_side = 1, 1
+        before = len(peripheral.requests)
+        result = await flow.async_step_placement({"mounting_side": "right"})
+    assert result["type"] == "create_entry"
+    assert not any(r["method"].startswith("set_") for r in peripheral.requests[before:])
+    assert not peripheral.is_connected
+
+
+async def test_configured_curtain_preserves_existing_side(flow, peripheral):
+    peripheral.adapter_side = 0
+    async def connect(_hass, _address, callback):
+        peripheral.is_connected = True
+        peripheral.disconnected_callback = callback
+        return peripheral
+
+    with patch("custom_components.yeelight_curtain_ble.config_flow.connect", connect):
+        await flow.async_step_bluetooth(discovery())
+        result = await flow.async_step_confirm({})
+    assert result["type"] == "create_entry"
+    assert not any(r["method"].startswith("set_") for r in peripheral.requests)
+    assert peripheral.adapter_side == 0 and not peripheral.is_connected

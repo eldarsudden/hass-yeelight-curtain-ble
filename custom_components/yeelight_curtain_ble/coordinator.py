@@ -26,6 +26,7 @@ from .const import (
     DEFAULT_MUSIC_PALETTE,
     DEFAULT_PERSISTENT_CONNECTION,
     DOMAIN,
+    MOUNTING_SIDES,
     OPT_MUSIC_EFFECT,
     OPT_MUSIC_PALETTE,
     OPT_PERSISTENT_CONNECTION,
@@ -123,6 +124,11 @@ class CurtainCoordinator(DataUpdateCoordinator[dict]):
                 state["power"] = props["power"]
             if "bright" in props and 0 <= int(props["bright"]) <= 100:
                 state["bright"] = int(props["bright"])
+            for name in ("adapter_set", "adapter_side"):
+                if name in props:
+                    if isinstance(props[name], bool) or str(props[name]) not in ("0", "1"):
+                        raise ValueError("Invalid mounting state")
+                    state[name] = int(props[name])
             if "mic_music_mode" in props:
                 music = json.loads(props["mic_music_mode"])
                 if isinstance(music, dict) and music.get("on") in (0, 1):
@@ -189,6 +195,14 @@ class CurtainCoordinator(DataUpdateCoordinator[dict]):
             await asyncio.sleep(0.6)
 
         await self._execute(operation, lambda state: state["power"] == target)
+
+    async def async_mounting_side(self, side: str) -> None:
+        if side not in MOUNTING_SIDES:
+            raise HomeAssistantError("Unknown mounting side")
+        await self._execute(
+            lambda: self.client.configure_mounting(side),
+            lambda state: state["adapter_set"] == 1 and state["adapter_side"] == MOUNTING_SIDES[side],
+        )
 
     async def async_light_on(
         self, brightness: int | None, effect: str | None, hs_color: tuple | None = None

@@ -33,8 +33,10 @@ async def test_fragmented_reads_and_separate_request_ids(peripheral):
         "music": {"on": 0, "effect_id": 0},
         "effect": [71, 1012, {}],
         "color_mode": 14,
+        "adapter_set": 1,
+        "adapter_side": 1,
     }
-    assert [r["id"] for r in peripheral.requests] == [1, 2, 3, 4, 5]
+    assert [r["id"] for r in peripheral.requests] == list(range(1, 8))
     assert len(peripheral.callbacks) == 1
     assert not client._pending
     await client.disconnect()
@@ -148,7 +150,7 @@ async def test_uniform_hsv_readback_and_exit_to_effect(peripheral):
     peripheral.effect = [0, 0, {}]
     state = await client.read_state()
     assert state["color_mode"] == 3 and state["hs_color"] == (233, 100)
-    assert [r["params"] for r in peripheral.requests[-3:]] == [["color_mode"], ["hue"], ["sat"]]
+    assert [r["params"] for r in peripheral.requests[-5:]] == [["color_mode"], ["hue"], ["sat"], ["adapter_set"], ["adapter_side"]]
     peripheral.color_mode = 14
     state = await client.read_state()
     assert "hs_color" not in state
@@ -162,4 +164,37 @@ async def test_invalid_hsv_readback_is_rejected(peripheral, hue, sat):
     peripheral.hue, peripheral.sat = hue, sat
     with pytest.raises(CurtainError, match="Invalid state response"):
         await client.read_state()
+    await client.disconnect()
+
+
+@pytest.mark.parametrize("side,wire_value", [("left", 0), ("right", 1)])
+async def test_initialize_placement_and_idempotent_retry(peripheral, side, wire_value):
+    client = make_client(peripheral)
+    peripheral.adapter_set = 0
+    peripheral.adapter_side = 0
+    assert await client.configure_mounting(side) == {"adapter_set": 1, "adapter_side": wire_value}
+    writes = [r for r in peripheral.requests if r["method"] == "set_ps"]
+    assert [r["params"] for r in writes] == [["adapter_side", wire_value]]
+    await client.configure_mounting(side)
+    assert len([r for r in peripheral.requests if r["method"] == "set_ps"]) == 1
+    await client.disconnect()
+
+
+async def test_placement_ack_without_readback_is_failure(peripheral):
+    from unittest.mock import AsyncMock
+
+    client = make_client(peripheral)
+    peripheral.adapter_set = 0
+    client.set = AsyncMock()
+    with pytest.raises(CurtainError, match="did not confirm"):
+        await client.configure_mounting("right")
+    await client.disconnect()
+
+
+@pytest.mark.parametrize("flag,value", [("adapter_set", 2), ("adapter_side", -1)])
+async def test_invalid_placement_state_is_rejected(peripheral, flag, value):
+    client = make_client(peripheral)
+    setattr(peripheral, flag, value)
+    with pytest.raises(CurtainError, match="Invalid adapter"):
+        await client.read_setup()
     await client.disconnect()

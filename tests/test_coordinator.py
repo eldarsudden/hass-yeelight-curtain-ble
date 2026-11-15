@@ -139,13 +139,14 @@ async def test_regular_and_music_selects_have_separate_options(coordinator):
     add_entities = MagicMock()
     object.__setattr__(coordinator.entry, "runtime_data", coordinator)
     await async_setup_entry(coordinator.hass, coordinator.entry, add_entities)
-    preset, music_effect, music_palette = add_entities.call_args.args[0]
+    preset, music_effect, music_palette, mounting = add_entities.call_args.args[0]
     assert isinstance(preset, PresetSelect)
     assert len(preset.options) == 19 and "Christmas Tree" in preset.options
     assert "Sound Wave" not in preset.options
     assert music_effect.options == list(coordinator.catalog["music_effects"])
     assert music_palette.options == list(coordinator.catalog["palettes"])
     assert preset.unique_id != music_effect.unique_id != music_palette.unique_id
+    assert mounting.current_option == "right"
 
 
 async def test_select_regular_preset_exits_music_without_changing_music_preferences(
@@ -367,4 +368,31 @@ async def test_bad_color_requests_send_no_commands(coordinator, peripheral, colo
     before = len(peripheral.requests)
     with pytest.raises(HomeAssistantError):
         await coordinator.async_light_on(None, effect, color)
+    assert len(peripheral.requests) == before
+
+
+async def test_mounting_entity_repairs_reset_entry_and_preserves_preferences(coordinator, peripheral):
+    from homeassistant.const import EntityCategory
+
+    from custom_components.yeelight_curtain_ble.select import MountingSideSelect
+
+    mounting = MountingSideSelect(coordinator)
+    assert mounting.entity_category == EntityCategory.CONFIG
+    assert mounting.current_option == "right"
+    await coordinator.async_music_preference(OPT_MUSIC_PALETTE, "Tranquil")
+    peripheral.adapter_set, peripheral.adapter_side = 0, 0
+    await coordinator.async_refresh()
+    assert mounting.current_option is None
+    coordinator.persistent_connection = False
+    await mounting.async_select_option("left")
+    assert mounting.current_option == "left" and not peripheral.is_connected
+    assert coordinator.entry.options[OPT_MUSIC_PALETTE] == "Tranquil"
+    assert peripheral.power == "off" and peripheral.bright == 9
+    coordinator._props({"adapter_set": 1, "adapter_side": 1})
+    assert mounting.current_option == "right"
+    coordinator._props({"adapter_set": 0, "adapter_side": 0})
+    assert mounting.current_option is None
+    before = len(peripheral.requests)
+    with pytest.raises(HomeAssistantError, match="Unknown mounting"):
+        await mounting.async_select_option("middle")
     assert len(peripheral.requests) == before

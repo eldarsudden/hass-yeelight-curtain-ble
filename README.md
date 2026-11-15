@@ -8,6 +8,7 @@ using a local adapter or an ESPHome Bluetooth Proxy.
 
 The integration provides:
 
+- Local initial setup without a Yeelight account or app, including mounting-side selection.
 - Power, brightness and a native color picker for a single color across the curtain.
 - 19 regular animation presets, with an optional dashboard picker showing an icon beside every preset.
 - Music Mode using the curtain's microphone, with 6 effects and 40 palettes.
@@ -48,10 +49,35 @@ You can also add the repository manually:
 4. Open **Settings → Devices & services → Add integration** and choose
    **Yeelight Curtain BLE**. If the curtain has already been discovered, choose
    **Configure** on its discovery card instead.
-5. Select the curtain and confirm the connection check.
+5. Select the curtain and confirm the connection check. For a new or reset curtain,
+   choose the controller mounting side when prompted.
 
-Setup only reads the device state. No integration YAML is required.
+Already configured curtains keep their mounting side. No integration YAML is required.
 For installation without HACS, see [INSTALL.md](INSTALL.md).
+
+## Initial setup without Yeelight
+
+You can add the tested YLYDD-0053 directly to HA, without a Yeelight account,
+app or pairing code. Close other BLE clients and follow the installation steps
+above. For an unconfigured curtain, setup asks for **Mounting side: Left / Right**.
+Choose the controller side you would select in Yeelight. The integration saves it
+to the curtain and checks the device's response before completing setup.
+
+An already configured curtain skips this step and keeps its current side. Setup
+never changes placement until you explicitly choose it. You do not need to reset
+a working curtain to add it.
+
+To change placement later, open the device page and use **Mounting side** under
+**Configuration**. If you factory-reset a curtain already added to HA, use this
+same control to initialize it again; removing and re-adding the integration is
+unnecessary. The side is stored on the curtain and read back, rather than being
+only an HA preference.
+
+A fresh factory reset followed by the actual setup-flow code was verified over
+Mac Bluetooth without opening Yeelight: initial setup was unset, choosing Right
+completed setup, and colors, brightness, Rainbow and power off worked. A new
+connection confirmed that Right was retained. This verifies the tested unit and
+firmware; actual HA/ESPHome proxy hardware operation remains unverified.
 
 ## Updates
 
@@ -107,7 +133,7 @@ client that may connect to the curtain.
 
 ## Controls
 
-Five standard entities appear on the device page. Importing a custom GIF also
+Six standard entities appear on the device page. Importing a custom GIF also
 adds a separate GIF selector:
 
 | Entity | Controls |
@@ -117,6 +143,7 @@ adds a separate GIF selector:
 | Music Mode | Sound response using the curtain's microphone |
 | Music effect | Sound Wave, Shine, Spectrum, Converge, Bounce, Breath |
 | Music palette | One of 40 palettes |
+| Mounting side | Left / Right, under Configuration; also initializes a reset curtain |
 
 For music, turn on the light first, then enable Music Mode. Choosing a regular
 effect stops Music Mode. Streaming audio from the phone's microphone is not supported.

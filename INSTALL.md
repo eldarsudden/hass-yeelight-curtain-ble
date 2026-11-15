@@ -30,11 +30,17 @@ Alternatively, add the repository through the menu:
 4. In **Settings → Devices & services**, configure the discovered curtain or
    choose **Add integration → Yeelight Curtain BLE**.
 
-Select the curtain and confirm the connection check. Setup only reads the device
-state. No YAML is required for the integration itself.
-You do not need to reset a working curtain to install it. On the tested unit,
-local control from a Mac worked immediately after a factory reset without
-initial setup in the Yeelight app.
+Select the curtain and confirm the connection check. A new or reset curtain asks
+for **Mounting side: Left / Right**. Choose the controller side you would select
+in Yeelight; setup writes and verifies it before finishing. An already configured
+curtain keeps its current side. No account, Yeelight app or integration YAML is
+required. You do not need to reset a working curtain to install it.
+
+To change the side later, use **Mounting side** under **Configuration** on the
+device page. Use this same control after resetting a curtain already added to HA;
+you do not need to remove and re-add it. Initial setup and control without the app
+were verified after a fresh reset over Mac Bluetooth, using the actual setup-flow
+code. Operation on an actual HA/ESPHome proxy still needs hardware verification.
 
 After installation and restart, this button opens integration setup:
 

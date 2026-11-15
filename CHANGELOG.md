@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.6.0 — 2026-11-15
+
+- Add local initial setup without a Yeelight account or app. New and reset curtains
+  prompt for the controller mounting side before any setup writes.
+- Preserve placement on already configured curtains. Add a **Mounting side**
+  configuration entity to change sides or initialize an existing entry after reset.
+- Read setup status and placement from the device. Verify initialization by
+  readback; a successful acknowledgment alone is insufficient. An explicit retry
+  avoids rewriting a setup that the device has already confirmed.
+- Keep setup changes serialized with other operations and support persistent or
+  on-demand BLE connections without losing music or custom GIF preferences.
+- Verify a fresh factory reset followed by the actual setup flow over Mac BLE,
+  without opening Yeelight: initially unset, Right selected, entry created, red
+  with brightness adjustment, green, blue, Rainbow and power off confirmed.
+  Reconnection confirms that the right-side setup is retained.
+
+Actual HA/ESPHome proxy hardware operation and other firmware remain unverified.
+
 ## 0.5.0 — 2026-11-15
 
 - Add a native color picker to the existing light entity using HA's hue/saturation
