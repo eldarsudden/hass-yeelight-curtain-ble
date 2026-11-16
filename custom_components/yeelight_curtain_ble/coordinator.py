@@ -42,6 +42,33 @@ from .custom_gif import (
 _LOGGER = logging.getLogger(__name__)
 _ROOT = Path(__file__).parent
 ERRORS = (CurtainError, BleakError, TimeoutError, OSError)
+SLOT_RELEASE_TIMEOUT = 5.0
+SLOT_CHECK_INTERVAL = 0.1
+
+
+def allocated_curtain_slots(hass: HomeAssistant, address: str) -> list[str]:
+    """Inspect reported allocations, not free-slot counts or local link state."""
+    key = address.upper()
+    return [
+        scanner.name
+        for scanner in bluetooth.async_current_scanners(hass)
+        if (allocation := scanner.get_allocations()) is not None
+        and any(item.upper() == key for item in allocation.allocated)
+    ]
+
+
+async def wait_for_slot_release(hass: HomeAssistant, address: str) -> None:
+    """Do not allocate another session while a proxy still reports this address."""
+    try:
+        async with asyncio.timeout(SLOT_RELEASE_TIMEOUT):
+            while sources := allocated_curtain_slots(hass, address):
+                await asyncio.sleep(SLOT_CHECK_INTERVAL)
+    except TimeoutError as error:
+        raise CurtainError(
+            "Curtain still occupies a reported Bluetooth slot on "
+            f"{', '.join(sources)}; reconnect blocked until the allocation clears. "
+            "If it remains stuck, disable this integration and restart that proxy"
+        ) from error
 
 
 def load_catalog() -> dict:
@@ -63,6 +90,10 @@ async def connect(hass: HomeAssistant, address: str, disconnected_callback, *, c
                 client_created(self)
 
             async def connect(self, *args, **kwargs):
+                # A HA wrapper may discard its failed low-level backend. Its
+                # disconnect can then return without releasing the proxy slot.
+                # Inspect allocations before *every* connector retry as well.
+                await wait_for_slot_release(hass, address)
                 client_created(self)
                 try:
                     return await super().connect(*args, **kwargs)
@@ -72,6 +103,11 @@ async def connect(hass: HomeAssistant, address: str, disconnected_callback, *, c
                     if client_cleanup is not None:
                         await client_cleanup()
                     raise
+
+            async def disconnect(self):
+                await super().disconnect()
+                # A free slot for another address is not proof of our release.
+                await wait_for_slot_release(hass, address)
 
         client_class = TrackedClient
     return await establish_connection(

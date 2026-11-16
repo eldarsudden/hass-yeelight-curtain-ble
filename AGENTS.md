@@ -121,6 +121,18 @@ Do not infer a complete decoder or publish a requested value as observed state.
 Keep initial reads and 30-second polling until adequate evidence exists. TTLock's
 passive-state design cannot simply be copied to this different protocol.
 
+Check `bluetooth.async_current_scanners(hass)` and each scanner's public
+`get_allocations()` before every connect attempt and after disconnect. Match
+`allocated` addresses case-insensitively, across all scanners, not just the
+selected proxy or the free-slot count. Wait up to five seconds for the target
+address to clear; raise CurtainError to stop connector retries if it remains.
+A HA wrapper can discard `_backend` after failed connect and then return from
+disconnect without doing anything. The allocation guard must cover that path
+without accessing private proxy credentials or manipulating internal slot lists.
+Test with the real HaBleakClientWrapper and a simulated low-level backend, not
+only a direct mock client. This prevents retrying over reported stale slots;
+it does not reclaim them or prove firmware cleanup.
+
 Regression tests model a backend that reports local link-down and raises during
 release, delayed and cancelled cleanup, incomplete setup, per-address ownership,
 internal connector retries, HA stop and stale callbacks. These are simulated

@@ -13,6 +13,12 @@ from custom_components.yeelight_curtain_ble.const import FILE_NOTIFY, JSON_NOTIF
 from custom_components.yeelight_curtain_ble.coordinator import create_client
 
 
+@pytest.fixture(autouse=True)
+def no_reported_slots():
+    with patch("custom_components.yeelight_curtain_ble.coordinator.bluetooth.async_current_scanners", return_value=[]):
+        yield
+
+
 def direct_client(peripheral, **kwargs):
     calls = []
 
@@ -364,3 +370,105 @@ async def test_json_timeout_does_not_shorten_backend_disconnect(peripheral):
     await client.disconnect()
     assert client._client is None and not peripheral.is_connected
     await client.close()
+
+
+async def test_real_ha_wrapper_cannot_retry_after_losing_allocated_backend(tmp_path, monkeypatch):
+    """HA drops _backend on connect failure; wrapper.disconnect then does nothing."""
+    from bleak.backends.device import BLEDevice
+    from habluetooth.wrappers import HaBleakClientWrapper
+
+    from custom_components.yeelight_curtain_ble import coordinator as module
+
+    address = "AA:BB:CC:DD:EE:01"
+    allocated = []
+    attempts = []
+    low_level_disconnects = []
+    device = BLEDevice(address, "YLBT_CURT_TEST", {"source": "proxy"})
+    scanner = SimpleNamespace(
+        name="test proxy", adapter_idx=None,
+        _add_connecting=lambda _address: None,
+        _finished_connecting=lambda *_args: None,
+        get_allocations=lambda: SimpleNamespace(allocated=allocated, free=1, slots=3),
+    )
+
+    class LeakingBackend:
+        is_connected = False
+
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        async def connect(self, *_args, **_kwargs):
+            attempts.append("connect")
+            allocated.append(address.lower())
+            raise BleakError("failure after reserving proxy slot")
+
+        async def disconnect(self):
+            low_level_disconnects.append("disconnect")
+            allocated.clear()
+
+    manager = SimpleNamespace(shutdown=False)
+    selected = SimpleNamespace(device=device, scanner=scanner, client=LeakingBackend,
+                               backend_name="ESPHome", source="proxy")
+    monkeypatch.setattr("habluetooth.wrappers.get_manager", lambda: manager)
+    monkeypatch.setattr(HaBleakClientWrapper, "_async_get_best_available_backend_and_device", lambda *_: selected)
+    monkeypatch.setattr(module, "BleakClientWithServiceCache", HaBleakClientWrapper)
+    monkeypatch.setattr(module, "SLOT_RELEASE_TIMEOUT", 0.005)
+    monkeypatch.setattr(module.bluetooth, "async_current_scanners", lambda _hass: [scanner])
+    monkeypatch.setattr(module.bluetooth, "async_ble_device_from_address", lambda *_a, **_k: device)
+    client = create_client(HomeAssistant(str(tmp_path)), address)
+    with pytest.raises(CurtainError, match="cleanup is unconfirmed"):
+        await client.read_state()
+    with pytest.raises(CurtainError):
+        await client.read_state()
+    assert attempts == ["connect"]
+    assert not low_level_disconnects  # the real HA wrapper has lost the backend
+    assert client._client._backend is None and client._client is not None
+    allocated.clear()  # model proxy recovery; release ownership without reconnect
+    await client.close()
+
+
+async def test_existing_duplicate_allocations_block_connection_before_backend_attempt(tmp_path, monkeypatch):
+    from custom_components.yeelight_curtain_ble import coordinator as module
+
+    address = "AA:BB:CC:DD:EE:01"
+    allocated = [address, address]
+    scanner = SimpleNamespace(name="test proxy", get_allocations=lambda: SimpleNamespace(allocated=allocated))
+
+    class Backend:
+        is_connected = False
+        attempts = 0
+
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        async def connect(self, **_kwargs):
+            type(self).attempts += 1
+
+        async def disconnect(self):
+            pass
+
+    monkeypatch.setattr(module, "BleakClientWithServiceCache", Backend)
+    monkeypatch.setattr(module, "SLOT_RELEASE_TIMEOUT", 0.005)
+    monkeypatch.setattr(module.bluetooth, "async_current_scanners", lambda _hass: [scanner])
+    monkeypatch.setattr(module.bluetooth, "async_ble_device_from_address", lambda *_a, **_k: SimpleNamespace(name="test"))
+    client = create_client(HomeAssistant(str(tmp_path)), address)
+    with pytest.raises(CurtainError, match="reconnect blocked"):
+        await client.read_state()
+    assert Backend.attempts == 0
+    allocated.clear()
+    await client.close()
+
+
+async def test_release_waits_for_own_address_even_when_another_slot_is_free(monkeypatch):
+    from custom_components.yeelight_curtain_ble import coordinator as module
+
+    address = "AA:BB:CC:DD:EE:01"
+    allocated = [address, "AA:BB:CC:DD:EE:02"]
+    scanner = SimpleNamespace(name="test proxy", get_allocations=lambda: SimpleNamespace(allocated=allocated, free=1))
+    monkeypatch.setattr(module.bluetooth, "async_current_scanners", lambda _hass: [scanner])
+    task = asyncio.create_task(module.wait_for_slot_release(object(), address))
+    await asyncio.sleep(0)
+    assert not task.done()
+    allocated.remove(address)
+    await task
+    assert allocated == ["AA:BB:CC:DD:EE:02"]

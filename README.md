@@ -135,8 +135,14 @@ needed. Music effect and palette preferences are preserved. This setting frees
 the slot between operations, but does not coordinate ownership with another BLE
 client that may connect to the curtain.
 
-If teardown fails or times out, the integration logs a warning and blocks new
-connections until cleanup of the previous backend succeeds. It retains that
+Before each connection attempt, the integration checks whether a scanner still
+reports this curtain in its occupied slots. After disconnect, it waits for this
+address to disappear from the reported allocations. Another free slot does not
+count as confirmation. Scanners without allocation reporting use backend cleanup
+checks only.
+
+If teardown fails, times out or leaves a reported allocation, the integration
+logs a warning and blocks new connections until cleanup succeeds. It retains that
 backend across integration reloads and waits separately for disconnect rather
 than applying the shorter command timeout. Repeatedly restarting HA does not
 clear a slot already orphaned inside a proxy. Disable this integration, restart

@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.6.3 — 2026-11-16
+
+- Check reported Bluetooth slot allocations before every connection attempt,
+  including retries inside the connection helper. Do not open a session while
+  any scanner still reports this curtain address as allocated.
+- After disconnect, wait for this address to disappear from reported allocations;
+  another free slot is not evidence that this curtain was released. Keep cleanup
+  pending and block reconnects if the allocation remains.
+- Cover the real HA Bluetooth wrapper failure path: it can drop its low-level
+  backend after a failed connect, making a later disconnect a no-op. The new
+  allocation check prevents retrying over the retained proxy slot.
+- Add tests for duplicate allocations after restart, delayed allocation updates
+  and the actual HA wrapper with a simulated leaking peripheral backend.
+
+This prevents new attempts over a reported retained allocation; it cannot reclaim
+slots already orphaned in proxy firmware. Disable the integration and restart the
+affected proxy once to clear existing stuck slots. Scanners without allocation
+reporting retain the backend cleanup checks. Physical ESPHome verification is
+still pending; the tests do not establish the cause of every firmware slot leak.
+
 ## 0.6.2 — 2026-11-15
 
 - Keep a disconnected backend until its resource cleanup completes. A link-down
