@@ -49,7 +49,10 @@ After installation and restart, this button opens integration setup:
 ## Color controls
 
 Open the light's controls to use HA's standard color picker and brightness slider.
-Choosing a color fills the curtain and stops the current animation or Music Mode.
+For Starry sky, Bonfire and Rainbow, choosing a color keeps the effect and changes
+its base color. Changing brightness keeps the existing palette. Choose **Solid
+color** in the light's effect list to switch to a uniform fill. Choosing a color
+during Music Mode or a GIF animation also switches to a uniform fill.
 A saturation of zero produces RGB white; color temperature is not supported.
 Native color control does not require a GIF upload or MTU 512.
 

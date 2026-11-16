@@ -322,7 +322,7 @@ async def test_native_color_picker_and_brightness_between_modes(coordinator, per
     await coordinator.async_music(True)
     await light.async_turn_on(hs_color=(120, 100), brightness=128)
     assert light.color_mode == ColorMode.HS
-    assert light.hs_color == (120, 100) and light.effect is None
+    assert light.hs_color == (120, 100) and light.effect == "Solid color"
     assert coordinator.data["bright"] == 50 and coordinator.data["music"]["on"] == 0
     assert light.state_attributes["hs_color"] == (120, 100)
     assert light.state_attributes["rgb_color"] == (0, 255, 0)
@@ -333,12 +333,12 @@ async def test_native_color_picker_and_brightness_between_modes(coordinator, per
     assert len([r for r in peripheral.requests if r["method"] == "set_hsv"]) == hsv_writes
     await light.async_turn_on(effect="Rainbow")
     assert light.effect == "Rainbow" and light.hs_color is None
-    assert light.color_mode == ColorMode.BRIGHTNESS
+    assert light.color_mode == ColorMode.HS
     assert light.state_attributes["brightness"] is not None
     await coordinator.async_music(True)
     assert light.effect == "Music mode"
     assert light.state_attributes["brightness"] is not None
-    assert "Music mode" not in light.effect_list and len(light.effect_list) == 19
+    assert "Music mode" not in light.effect_list and len(light.effect_list) == 20
     coordinator.persistent_connection = False
     await light.async_turn_on(hs_color=(360, 0))
     assert light.hs_color == (0, 0) and not peripheral.is_connected
@@ -365,12 +365,119 @@ async def test_color_ack_requires_matching_readback(coordinator):
     assert "hs_color" not in coordinator.data
 
 
-@pytest.mark.parametrize("color,effect", [((float('nan'), 50), None), ((0, 101), None), ((-1, 100), None), ((True, 50), None), ((0, 50), "Rainbow")])
+@pytest.mark.parametrize("color,effect", [((float('nan'), 50), None), ((0, 101), None), ((-1, 100), None), ((True, 50), None), ((0, 50), "Christmas Tree")])
 async def test_bad_color_requests_send_no_commands(coordinator, peripheral, color, effect):
     before = len(peripheral.requests)
     with pytest.raises(HomeAssistantError):
         await coordinator.async_light_on(None, effect, color)
     assert len(peripheral.requests) == before
+
+
+@pytest.mark.parametrize("name,effect_id", [("Starry sky", 5), ("Bonfire", 34), ("Rainbow", 39)])
+async def test_color_picker_preserves_builtin_effect_and_speed(coordinator, peripheral, name, effect_id):
+    from homeassistant.components.light import ColorMode
+
+    peripheral.effect = [effect_id, 0, {
+        "rate": 76, "color": [-65536, -16776961, 0, 0],
+        "intensity": 128, "mode": effect_id, "start": 0, "end": 475,
+    }]
+    await coordinator.async_refresh()
+    light = CurtainLight(coordinator)
+    assert light.effect == name and light.color_mode == ColorMode.HS
+    assert light.hs_color == (0, 100)
+    assert light.extra_state_attributes["effect_colors"] == [(255, 0, 0), (0, 0, 255)]
+    coordinator.persistent_connection = False
+    await light.async_turn_on(hs_color=(120, 100), brightness=128)
+    assert coordinator.preset == name and light.effect == name
+    assert light.hs_color == (120, 100) and peripheral.bright == 50
+    assert light.extra_state_attributes["effect_colors"] == [(0, 255, 0)]
+    activation = [r for r in peripheral.requests if r["method"] == "set_fx_effect"][-1]
+    assert activation["params"] == [effect_id, 0, 1, {"rate": 76, "color": [0xFF00FF00]}]
+    assert not any(r["method"] == "set_hsv" for r in peripheral.requests)
+    assert not peripheral.is_connected and not peripheral.file_packets
+
+
+async def test_explicit_effect_with_color_from_music_and_solid_color_escape(coordinator, peripheral):
+    light = CurtainLight(coordinator)
+    await coordinator.async_music(True)
+    await light.async_turn_on(effect="Starry sky", hs_color=(240, 100))
+    assert light.effect == "Starry sky" and light.hs_color == (240, 100)
+    assert not peripheral.music["on"]
+    # A brightness-only operation must leave all three colors untouched.
+    peripheral.effect[2]["color"] = [-65536, -16711936, -16776961, 0]
+    await coordinator.async_refresh()
+    before = len(peripheral.requests)
+    await light.async_turn_on(brightness=64)
+    assert light.extra_state_attributes["effect_colors"] == [(255, 0, 0), (0, 255, 0), (0, 0, 255)]
+    assert not any(r["method"] in ("set_hsv", "set_fx_effect") for r in peripheral.requests[before:])
+    await light.async_turn_on(effect="Solid color")
+    assert light.effect == "Solid color" and light.hs_color == (0, 100)
+    assert light.extra_state_attributes is None and coordinator.preset is None
+    assert peripheral.bright == 25
+    await light.async_turn_on(effect="Rainbow", hs_color=(360, 0))
+    assert light.hs_color == (0, 0) and light.effect == "Rainbow"
+    await light.async_turn_on(effect="Solid color", hs_color=(120, 100))
+    assert light.hs_color == (120, 100) and peripheral.color_mode == 3
+
+
+async def test_effect_color_requires_actual_palette_readback(coordinator, peripheral):
+    peripheral.effect = [5, 0, {"color": [-65536, 0, 0, 0]}]
+    await coordinator.async_refresh()
+    coordinator.client.set = AsyncMock()
+    with pytest.raises(HomeAssistantError, match="did not confirm"):
+        await CurtainLight(coordinator).async_turn_on(hs_color=(240, 100))
+    assert CurtainLight(coordinator).hs_color == (0, 100)
+    assert coordinator.last_update_success
+
+
+async def test_color_edit_must_confirm_preserved_speed(coordinator, peripheral):
+    peripheral.effect = [5, 0, {"rate": 76, "color": [-65536, 0, 0, 0]}]
+    await coordinator.async_refresh()
+    original_set = coordinator.client.set
+
+    async def changed_speed(method, params):
+        await original_set(method, params)
+        if method == "set_fx_effect":
+            peripheral.effect[2]["rate"] = 130
+
+    coordinator.client.set = changed_speed
+    with pytest.raises(HomeAssistantError, match="did not confirm"):
+        await CurtainLight(coordinator).async_turn_on(hs_color=(240, 100))
+    assert coordinator.data["effect"][2]["rate"] == 130
+    assert CurtainLight(coordinator).hs_color == (240, 100)
+
+
+async def test_queued_color_uses_effect_selected_inside_operation_lock(coordinator, peripheral):
+    import asyncio
+
+    await coordinator._operation_lock.acquire()
+    first = asyncio.create_task(coordinator.async_light_on(None, "Starry sky"))
+    second = asyncio.create_task(coordinator.async_light_on(None, None, (240, 100)))
+    await asyncio.sleep(0)
+    coordinator._operation_lock.release()
+    await asyncio.gather(first, second)
+    assert coordinator.preset == "Starry sky" and CurtainLight(coordinator).hs_color == (240, 100)
+    assert not any(r["method"] == "set_hsv" for r in peripheral.requests)
+
+
+@pytest.mark.parametrize("colors", [None, [], [0, 0, 0, 0], [True], ["red"], [2**32], [-(2**31) - 1]])
+async def test_unknown_effect_color_is_not_invented(coordinator, peripheral, colors):
+    peripheral.effect = [5, 0, {"color": colors}]
+    await coordinator.async_refresh()
+    light = CurtainLight(coordinator)
+    assert light.hs_color is None and light.extra_state_attributes is None
+    # A missing readout must not prevent choosing a color.
+    await light.async_turn_on(hs_color=(0, 100))
+    assert light.hs_color == (0, 100)
+
+
+async def test_effect_notification_invalidates_old_palette(coordinator, peripheral):
+    await coordinator.async_light_on(None, "Starry sky", (0, 100))
+    light = CurtainLight(coordinator)
+    assert light.hs_color == (0, 100)
+    coordinator._props({"fx_effect": '{"effect_id":39,"custom_id":0}'})
+    assert light.effect == "Rainbow" and light.hs_color is None
+    assert light.extra_state_attributes is None
 
 
 async def test_mounting_entity_repairs_reset_entry_and_preserves_preferences(coordinator, peripheral):

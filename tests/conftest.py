@@ -95,7 +95,12 @@ class Peripheral:
             self.music = {"on": 0, "effect_id": 0}
             result = ["ok"]
         elif method == "set_fx_effect":
-            self.effect = params[:2] + [params[3]]
+            options = dict(params[3])
+            if "color" in options:
+                # Hardware normalizes ARGB to signed ints and four padded slots.
+                colors = [value if value < 2**31 else value - 2**32 for value in options["color"]]
+                options["color"] = colors + [0] * (4 - len(colors))
+            self.effect = params[:2] + [options]
             self.color_mode = 14
             result = ["ok"]
         else:

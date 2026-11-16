@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.7.0 — 2026-11-17
+
+- Keep Starry sky, Bonfire or Rainbow active when changing the main light's color.
+  Use the native effect color parameter and preserve its observed speed. A color
+  edit replaces the effect palette with one color; brightness-only changes retain
+  the entire palette.
+- Add **Solid color** to the light's effect list for an explicit return to a
+  uniform fill. The separate Preset selector keeps its original 19 animations.
+- Read effect colors from the device, including signed ARGB values and zero
+  padding. Show the first palette color in the standard picker and all observed
+  colors in `effect_colors`. Check the returned palette before reporting success.
+- Allow a compatible effect and color in the same `light.turn_on` action. Reject
+  GIF-preset/color combinations before writes. Keep color edits, readback and
+  on-demand disconnect within the existing serialized operation.
+
+Direct Mac tests verified Starry sky accepting and returning one, two and three
+colors; the user observed blended shades. Original effect, color and brightness
+were restored and checked. Multi-color palette editing is not exposed in the UI.
+Bonfire/Rainbow color capability is based on the exact model's app configuration;
+their color rendering and actual HA/ESPHome operation remain unverified. Native
+device-page grouping is unchanged.
+
 ## 0.6.5 — 2026-11-16
 
 - Retain the actual low-level BLE backend independently of the HA wrapper.

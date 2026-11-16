@@ -9,7 +9,7 @@ using a local adapter or an ESPHome Bluetooth Proxy.
 The integration provides:
 
 - Local initial setup without a Yeelight account or app, including mounting-side selection.
-- Power, brightness and a native color picker for a single color across the curtain.
+- Power, brightness and a native color picker for solid colors and compatible effects.
 - 19 regular animation presets, with an optional dashboard picker showing an icon beside every preset.
 - Music Mode using the curtain's microphone, with 6 effects and 40 palettes.
 
@@ -172,7 +172,7 @@ adds a separate GIF selector:
 
 | Entity | Controls |
 | --- | --- |
-| Light | Power, brightness from 1–100%, a single color, regular effects |
+| Light | Power, brightness from 1–100%, solid color, regular effects and color changes for Starry sky, Bonfire and Rainbow |
 | Preset | A separate list of 19 regular animations, including Christmas Tree, Rainbow and Bonfire |
 | Music Mode | Sound response using the curtain's microphone |
 | Music effect | Sound Wave, Shine, Spectrum, Converge, Bounce, Breath |
@@ -192,18 +192,27 @@ enable it. With Music Mode on, changes apply immediately. The palette shows the
 saved preference: its current colors cannot be read from the curtain.
 The initial music selection is **Bounce / Father's Day**.
 
-## Single color
+## Colors
 
 Open the curtain's light controls in Home Assistant and use the standard color
-picker. The chosen color fills the entire curtain. Brightness remains adjustable.
-Choosing a color turns on the light and stops Music Mode or the current animation;
-choosing a regular preset starts that animation again.
+picker. With **Starry sky**, **Bonfire** or **Rainbow** active, it changes the
+effect's base color and keeps the animation and its observed speed. Selecting a
+color replaces any existing effect palette with that one color. Changing only
+brightness keeps the current palette.
+
+Choose **Solid color** in the light's effect list to fill the curtain with a
+single color. This stops the animation and uses its first observed color, or
+white if no color is available. You can also request Solid color and a color
+together. Choosing a color during Music Mode or a GIF animation switches to
+solid color. Color requests turn on the light; brightness remains adjustable.
 
 For white, move saturation to zero. This is white mixed from the RGB LEDs, not
-adjustable white color temperature. Color commands use the curtain's native HSV
-mode; they do not upload a GIF or need the large MTU used by animation uploads.
-The displayed hue and saturation come from device readback and notifications.
-During an animation, no uniform color is reported. The light's mode readout may
+adjustable white color temperature. Solid colors use the curtain's native HSV
+mode; effect colors use its animation controls. Neither needs a GIF upload or
+the large MTU used by animation uploads. The displayed color comes from device
+readback. For the three compatible effects it represents the first palette
+color, rather than the color of every LED; all read colors appear in the light's
+`effect_colors` attribute. Other animations have no reported color. The mode readout may
 show **Music mode**, **Custom GIF** or **Unknown effect**; these are status labels,
 not additional options in the regular preset list. Brightness stays available.
 
@@ -219,8 +228,27 @@ data:
   brightness_pct: 50
 ```
 
-Use either a color or a regular effect in one call. A request containing both is
-rejected before any device writes.
+You can also select a compatible effect and its color together:
+
+```yaml
+action: light.turn_on
+target:
+  entity_id: light.your_curtain
+data:
+  effect: Starry sky
+  rgb_color: [0, 0, 255]
+```
+
+Use `effect: Solid color` to explicitly leave an animation. Requests combining a
+GIF preset and a color are rejected before any device writes.
+
+Starry sky accepted and returned two- and three-color palettes in a direct Mac
+test. The user observed blended shades, with green appearing occasionally in the
+red/green/blue test. This does not mean each chosen color gets an independent
+group of LEDs. The standard color picker edits one base color; multi-color palette
+editing is not exposed in this release. Color support for Bonfire and Rainbow
+is based on this model's app configuration; their color changes have not been
+visually checked on hardware.
 
 Native color was verified using this integration's client, coordinator and light
 entity over a Mac's Bluetooth: red, green, blue, white, brightness changes,

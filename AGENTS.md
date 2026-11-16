@@ -51,6 +51,7 @@ documentation. Do not claim support for other models or HA versions without test
   verification and polling.
 - `light.py`, `switch.py`, `select.py`: HA entities.
 - `protocol.py`: JSON and file-block encoding.
+- `effects.py`: observed ARGB palettes and safe built-in effect color options.
 - `catalog.json`, `presets/`: effect catalog, music palettes and 16 GIFs.
 - `custom_gif.py`: native upload consumption, bounded decoding, private per-entry
   content-addressed storage and cleanup. Pillow is supplied by HA Core.
@@ -185,7 +186,9 @@ Do not substitute a known effect for an unknown music effect. Enabling Music
 Mode does not itself turn on the light; a regular effect stops Music Mode.
 
 Regular animations are exposed by a separate Preset `select` entity and the
-light's effects. The regular selector and light's effect list retain the same 19 preset options.
+light's effects. Both retain the same 19 animation options. The light additionally
+offers `Solid color` as an explicit escape from a colorable effect; it is not a
+regular preset and must not appear in the Preset selector or icon card.
 The regular preset is unknown while music is active. The light's `effect` readout
 may use non-selectable `Music mode`, `Custom GIF` or `Unknown effect` status labels
 so HA accepts `ColorMode.BRIGHTNESS` during those animations. These labels must
@@ -231,17 +234,52 @@ requests, private addresses and the hardware report outside the public export.
 Expose `ColorMode.HS` on the existing light. Read `color_mode` on every poll and
 read `hue`/`sat` only in mode 3. Only report a uniform color with mode 3, inactive
 music and effect marker `[0, 0]`; discard stale color values on mode changes.
-Animation mode 14 is not a uniform color. Report `ColorMode.BRIGHTNESS` while an
-effect/status label is active so HA keeps brightness without inventing a color.
+Animation mode 14 is not a uniform color. For Starry sky (5/0), Bonfire (34/0)
+and Rainbow (39/0), report HS to enable the main picker. Its value is derived from
+the first observed effect color, and `effect_colors` contains the full observed
+palette. Missing/malformed palette data means unknown color, not an invented
+default. For other animations/status labels report `ColorMode.BRIGHTNESS` so HA
+keeps brightness without inventing a color. Drop old palette options when an
+ID-only `fx_effect` notification arrives; the next full read supplies fresh colors.
 
 Use the captured `set_hsv [hue, saturation, "smooth", 0]`; keep native brightness
 through `set_scene ["bright", percent, 0]`. Color requests turn on the light and
 stop music. Verify the read mode, HS, power and requested brightness before
 returning success. Hue is irrelevant for saturation zero. Round HA's fractional
-HS inputs to firmware integers and normalize 360 to 0. Reject simultaneous effect
-and color requests before BLE writes. Preserve the standard RGB-to-HS conversion
+HS inputs to firmware integers and normalize 360 to 0. Allow simultaneous color
+and effect only for the three colorable built-ins or `Solid color`; reject GIF
+preset/color combinations before BLE writes. Preserve the standard RGB-to-HS conversion
 in HA; do not implement an unverified `set_rgb` command or generate a color GIF.
 Do not infer white-temperature support from RGB white.
+
+When a color request has no explicit effect, resolve the current mode inside the
+operation lock. Preserve an active colorable built-in, sending
+`set_fx_effect [id, 0, 1, {"color": [unsigned_argb], "rate": observed_rate}]`.
+Use only valid observed speed (0–255 integer), falling back to a catalog speed
+when present. Do not replay normalized renderer fields such as intensity,
+onoff, mixer, mode, start or end. Color edits send one opaque ARGB value and
+verify all non-padding returned colors, mode, IDs, music, power and brightness.
+Read colors may be signed 32-bit integers; zero slots are padding, while opaque
+black is a real color. Brightness-only writes do not change effect colors.
+`Solid color` explicitly uses native HSV, taking the current first palette color,
+current native HS or white. Color edits during music/GIF use native HSV as before.
+
+The exact model's bundled app configuration marks only Bonfire, Rainbow and
+Starry sky with speed/color capabilities. Direct Mac tests on 2026-11-17 verified
+Starry sky with one, two and three opaque ARGB colors; readback returned four
+slots including zero padding. The user observed blended shades, including
+occasional green in the red/green/blue palette. Do not claim separate pure-color
+LED groups or infer a maximum supported palette size from the four read slots.
+Multi-color editing is not exposed in the UI. Bonfire/Rainbow color rendering
+has not been visually verified. Hardware restoration was checked against the
+initial power, brightness, effect IDs and normalized palette; replaying the full
+read options initially failed to restore color, while the sanitized unsigned
+color/rate write restored it. Do not attribute this solely to signedness without
+an isolated test. Private raw reports stay outside the public export.
+
+The user chose the standard device page and declined a separate dashboard card
+for control grouping. Do not add a divider workaround or change entity categories
+to imitate grouping; the native device card does not provide arbitrary separators.
 
 ## Custom GIF library
 

@@ -19,6 +19,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.util.color import color_hs_to_RGB, color_RGB_to_hs
 
 from .client import CurtainClient, CurtainError
 from .const import (
@@ -37,6 +38,13 @@ from .custom_gif import (
     OPT_CUSTOM_SLOT,
     OPT_LAST_CUSTOM_GIF,
     read_custom_gif,
+)
+from .effects import (
+    COLOR_EFFECT_IDS,
+    SOLID_COLOR_EFFECT,
+    color_options,
+    effect_colors,
+    is_color_effect,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -368,8 +376,6 @@ class CurtainCoordinator(DataUpdateCoordinator[dict]):
         self, brightness: int | None, effect: str | None, hs_color: tuple | None = None
     ) -> None:
         if hs_color is not None:
-            if effect is not None:
-                raise HomeAssistantError("Choose either a color or a preset")
             if (
                 not isinstance(hs_color, (tuple, list))
                 or len(hs_color) != 2
@@ -379,9 +385,11 @@ class CurtainCoordinator(DataUpdateCoordinator[dict]):
             ):
                 raise HomeAssistantError("Invalid hue or saturation")
             hs_color = (round(hs_color[0]) % 360, round(hs_color[1]))
-        if effect is not None and effect not in self.presets:
+        if effect is not None and effect != SOLID_COLOR_EFFECT and effect not in self.presets:
             raise HomeAssistantError(f"Unknown effect: {effect}")
         preset = self.presets.get(effect)
+        if hs_color is not None and preset is not None and (preset["effect_id"], preset["custom_id"]) not in COLOR_EFFECT_IDS:
+            raise HomeAssistantError("This preset does not support color changes")
         gif = None
         if preset is not None and "file" in preset:
             gif = await self.hass.async_add_executor_job(
@@ -390,48 +398,78 @@ class CurtainCoordinator(DataUpdateCoordinator[dict]):
             if hashlib.sha256(gif).hexdigest() != preset["sha256"]:
                 raise HomeAssistantError("Preset GIF is missing or corrupted")
 
+        target = {}
+
         async def operation():
+            # Resolve implicit color edits under the same lock as writes/readback.
+            # A queued command may have changed the mode since async_light_on began.
+            selected = preset
+            color = hs_color
+            if color is not None and effect is None and is_color_effect(self.data):
+                selected = self.presets[self.preset]
+            if effect == SOLID_COLOR_EFFECT and color is None:
+                if colors := effect_colors(self.data):
+                    hue, saturation = color_RGB_to_hs(*colors[0])
+                    color = (round(hue) % 360, round(saturation))
+                else:
+                    color = self.data.get("hs_color", (0, 0))
+            target.update(preset=selected, hs=color, rgb=None, rate=None)
+            options = None
+            if color is not None and selected is not None:
+                target["rgb"] = color_hs_to_RGB(*color)
+                options = color_options(self.data, selected, target["rgb"])
+                target["rate"] = options.get("rate")
             await self.client.set("set_power", ["on", "smooth", 500])
             if brightness is not None:
                 await self.client.set("set_scene", ["bright", brightness, 0])
-            if hs_color is not None:
+            if color is not None:
                 await self.client.set("set_ps", ["mic_music_mode", '{"on":0}'])
-                await self.client.set("set_hsv", [*hs_color, "smooth", 0])
-            if preset is not None:
-                if self.data and self.data["music"].get("on"):
+                if selected is None:
+                    await self.client.set("set_hsv", [*color, "smooth", 0])
+            if selected is not None:
+                if color is None and self.data and self.data["music"].get("on"):
                     await self.client.set("set_ps", ["mic_music_mode", '{"on":0}'])
                 if gif is not None:
                     await self.client.upload(gif)
-                    if [preset["effect_id"], preset["custom_id"]] == GIF_EFFECT:
+                    if [selected["effect_id"], selected["custom_id"]] == GIF_EFFECT:
                         self.hass.config_entries.async_update_entry(
                             self.entry, options={**self.entry.options, OPT_CUSTOM_SLOT: False}
                         )
                 await self.client.set(
                     "set_fx_effect",
-                    [preset["effect_id"], preset["custom_id"], 1, preset["options"]],
+                    [selected["effect_id"], selected["custom_id"], 1, options if options is not None else selected["options"]],
                 )
             await asyncio.sleep(0.6)
 
         def verify(state):
+            selected, color, rgb = target["preset"], target["hs"], target["rgb"]
+            if rgb is not None:
+                color_confirmed = effect_colors(state) == [rgb]
+                if target["rate"] is not None:
+                    color_confirmed = color_confirmed and (
+                        len(state["effect"]) > 2
+                        and isinstance(state["effect"][2], dict)
+                        and type(state["effect"][2].get("rate")) is int
+                        and state["effect"][2]["rate"] == target["rate"]
+                    )
+            else:
+                color_confirmed = color is None or (
+                    not state["music"].get("on")
+                    and state.get("color_mode") == 3
+                    and state["effect"][:2] == [0, 0]
+                    and state.get("hs_color") is not None
+                    and state["hs_color"][1] == color[1]
+                    and (color[1] == 0 or state["hs_color"][0] == color[0])
+                )
             return (
                 state["power"] == "on"
                 and (brightness is None or state["bright"] == brightness)
+                and color_confirmed
                 and (
-                    hs_color is None
+                    selected is None
                     or (
                         not state["music"].get("on")
-                        and state.get("color_mode") == 3
-                        and state["effect"][:2] == [0, 0]
-                        and state.get("hs_color") is not None
-                        and state["hs_color"][1] == hs_color[1]
-                        and (hs_color[1] == 0 or state["hs_color"][0] == hs_color[0])
-                    )
-                )
-                and (
-                    preset is None
-                    or (
-                        not state["music"].get("on")
-                        and state["effect"][:2] == [preset["effect_id"], preset["custom_id"]]
+                        and state["effect"][:2] == [selected["effect_id"], selected["custom_id"]]
                     )
                 )
             )

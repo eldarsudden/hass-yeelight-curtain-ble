@@ -8,8 +8,10 @@ from homeassistant.components.light import (
     LightEntity,
     LightEntityFeature,
 )
+from homeassistant.util.color import color_RGB_to_hs
 
 from .custom_gif import GIF_EFFECT, OPT_CUSTOM_SLOT
+from .effects import SOLID_COLOR_EFFECT, effect_colors, is_color_effect
 from .entity import CurtainEntity
 
 PARALLEL_UPDATES = 0
@@ -27,7 +29,7 @@ class CurtainLight(CurtainEntity, LightEntity):
 
     def __init__(self, coordinator):
         super().__init__(coordinator, "light")
-        self._attr_effect_list = list(coordinator.presets)
+        self._attr_effect_list = [SOLID_COLOR_EFFECT, *coordinator.presets]
 
     @property
     def is_on(self):
@@ -45,7 +47,7 @@ class CurtainLight(CurtainEntity, LightEntity):
         if state["music"].get("on"):
             return "Music mode"
         if state.get("color_mode") == 3 and state["effect"][:2] == [0, 0]:
-            return None
+            return SOLID_COLOR_EFFECT
         # These are observed mode labels, never additional selectable regular presets.
         if self.coordinator.entry.options.get(OPT_CUSTOM_SLOT) and state["effect"][:2] == GIF_EFFECT:
             return "Custom GIF"
@@ -53,12 +55,23 @@ class CurtainLight(CurtainEntity, LightEntity):
 
     @property
     def color_mode(self):
-        return ColorMode.BRIGHTNESS if self.effect is not None else ColorMode.HS
+        if self.effect == SOLID_COLOR_EFFECT or is_color_effect(self.coordinator.data):
+            return ColorMode.HS
+        return ColorMode.BRIGHTNESS
 
     @property
     def hs_color(self):
-        if self.color_mode == ColorMode.HS:
+        if colors := effect_colors(self.coordinator.data):
+            # The picker edits the base color, not a uniform LED readout.
+            return color_RGB_to_hs(*colors[0])
+        if self.effect == SOLID_COLOR_EFFECT:
             return self.coordinator.data.get("hs_color")
+        return None
+
+    @property
+    def extra_state_attributes(self):
+        if colors := effect_colors(self.coordinator.data):
+            return {"effect_colors": colors}
         return None
 
     async def async_turn_on(self, **kwargs):
