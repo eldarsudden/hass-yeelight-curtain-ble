@@ -129,6 +129,20 @@ address to clear; raise CurtainError to stop connector retries if it remains.
 A HA wrapper can discard `_backend` after failed connect and then return from
 disconnect without doing anything. The allocation guard must cover that path
 without accessing private proxy credentials or manipulating internal slot lists.
+The integration-owned TrackedClient also retains the low-level backend in
+`_curtain_retained_backend` when HA clears its active `_backend`. Its `_backend`
+property is an explicit compatibility boundary with the tested Bleak 3.0.2 /
+habluetooth 7.1.2 wrappers: do not patch their global classes. A replacement
+backend is rejected until the old reference is released. When HA has no active
+backend, call the retained backend's `disconnect()` directly before the wrapper
+cleanup and allocation check. ESPHome 4.0.0 sends its API device-disconnect even
+when locally down. Keep the reference through release errors, pending cleanup
+and cancellation; clear it only after disconnect and the allocation guard succeed.
+This cannot recover a pointer already lost by older code or an HA process restart.
+Do not infer that every firmware leak is recoverable if the API request fails.
+Tests use real HA wrapper and ESPHome transport code with simulated peripheral/API
+peers; pins in requirements-dev reproduce HA 2026.11.1's transport versions.
+
 Before each attempt, use the public HA scanner-device lookup and scanner
 `connections_in_progress()` to wait when every reachable path is already
 establishing another connection. Bound that wait to 30 seconds; a busy timeout

@@ -147,6 +147,12 @@ address to disappear from the reported allocations. Another free slot does not
 count as confirmation. Scanners without allocation reporting use backend cleanup
 checks only.
 
+If Home Assistant discards its internal client after a failed connection, the
+integration keeps its own reference to that session's BLE backend and sends
+disconnect through it. For ESPHome, this requests release of the curtain alone,
+even when the backend already reports a disconnected local link. The reference
+is released only after cleanup and the allocation check succeed.
+
 If teardown fails, times out or leaves a reported allocation, the integration
 logs a warning and blocks new connections until cleanup succeeds. It retains that
 backend across integration reloads and waits separately for disconnect rather

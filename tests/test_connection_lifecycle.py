@@ -375,42 +375,67 @@ async def test_json_timeout_does_not_shorten_backend_disconnect(peripheral):
     await client.close()
 
 
-async def test_real_ha_wrapper_cannot_retry_after_losing_allocated_backend(tmp_path, monkeypatch, caplog):
-    """HA drops _backend on connect failure; wrapper.disconnect then does nothing."""
+@pytest.mark.parametrize("release_fails", [False, True])
+async def test_real_ha_wrapper_recovers_discarded_backend(tmp_path, monkeypatch, caplog, peripheral, release_fails):
+    """Use real HA connect/failure/disconnect code, with a leaking proxy backend."""
     from bleak.backends.device import BLEDevice
     from habluetooth.wrappers import HaBleakClientWrapper
 
     from custom_components.yeelight_curtain_ble import coordinator as module
 
     address = "AA:BB:CC:DD:EE:01"
-    allocated = []
+    other_address = "AA:BB:CC:DD:EE:02"
+    allocated = [other_address]
     attempts = []
     low_level_disconnects = []
+    instances = []
+    release_blocked = [release_fails]
     device = BLEDevice(address, "YLBT_CURT_TEST", {"source": "proxy"})
     scanner = SimpleNamespace(
-        name="test proxy", adapter_idx=None,
+        name="test proxy", source="proxy", adapter_idx=None, _clients=set(),
         _add_connecting=lambda _address: None,
         _finished_connecting=lambda *_args: None,
         get_allocations=lambda: SimpleNamespace(allocated=allocated, free=1, slots=3),
     )
 
-    class LeakingBackend:
-        is_connected = False
+    class Backend(type(peripheral)):
+        def __init__(self, *_args, **kwargs):
+            super().__init__()
+            self.is_connected = False
+            self.callback = kwargs["disconnected_callback"]
+            self.services = SimpleNamespace(get_characteristic=lambda uuid: SimpleNamespace(
+                uuid=uuid, max_write_without_response_size=509,
+            ))
+            instances.append(self)
 
-        def __init__(self, *_args, **_kwargs):
-            pass
+        async def start_notify(self, characteristic, callback, **_kwargs):
+            self.callbacks[characteristic.uuid] = lambda _char, data: callback(data)
+
+        async def stop_notify(self, characteristic):
+            self.callbacks.pop(getattr(characteristic, "uuid", characteristic), None)
+
+        async def write_gatt_char(self, characteristic, data, response):
+            await super().write_gatt_char(characteristic.uuid, data, response)
 
         async def connect(self, *_args, **_kwargs):
             attempts.append("connect")
             allocated.append(address.lower())
-            raise BleakError("failure after reserving proxy slot")
+            if len(attempts) == 1:
+                raise BleakError("failure after reserving proxy slot")
+            self.is_connected = True
 
         async def disconnect(self):
-            low_level_disconnects.append("disconnect")
-            allocated.clear()
+            low_level_disconnects.append(self)
+            was_connected = self.is_connected
+            self.is_connected = False
+            if was_connected:
+                self.callback()
+            if release_blocked[0]:
+                raise BleakError("proxy did not acknowledge targeted release")
+            allocated[:] = [item for item in allocated if item.upper() != address]
 
-    manager = SimpleNamespace(shutdown=False)
-    selected = SimpleNamespace(device=device, scanner=scanner, client=LeakingBackend,
+    manager = SimpleNamespace(shutdown=False, async_scanner_by_source=lambda _source: scanner)
+    selected = SimpleNamespace(device=device, scanner=scanner, client=Backend,
                                backend_name="ESPHome", source="proxy")
     monkeypatch.setattr("habluetooth.wrappers.get_manager", lambda: manager)
     monkeypatch.setattr(HaBleakClientWrapper, "_async_get_best_available_backend_and_device", lambda *_: selected)
@@ -419,17 +444,27 @@ async def test_real_ha_wrapper_cannot_retry_after_losing_allocated_backend(tmp_p
     monkeypatch.setattr(module.bluetooth, "async_current_scanners", lambda _hass: [scanner])
     monkeypatch.setattr(module.bluetooth, "async_ble_device_from_address", lambda *_a, **_k: device)
     client = create_client(HomeAssistant(str(tmp_path)), address)
-    with pytest.raises(CurtainError, match="cleanup is unconfirmed"):
-        await client.read_state()
-    with pytest.raises(CurtainError):
-        await client.read_state()
-    assert attempts == ["connect"]
+    if release_fails:
+        with pytest.raises(CurtainError, match="cleanup is unconfirmed"):
+            await client.read_state()
+        with pytest.raises(CurtainError):
+            await client.read_state()
+        assert attempts == ["connect"]
+        assert client._client._backend is None  # HA discarded its pointer
+        assert client._client._curtain_retained_backend is instances[0]
+        assert low_level_disconnects  # real release attempts still reach backend
+        release_blocked[0] = False
+    state = await client.read_state()
+    assert state["power"] == "off"
+    assert attempts == ["connect", "connect"]
+    assert low_level_disconnects[0] is instances[0]
     assert "failure after reserving proxy slot" in caplog.text
     assert "connect failed before cleanup" in caplog.text
-    assert not low_level_disconnects  # the real HA wrapper has lost the backend
-    assert client._client._backend is None and client._client is not None
-    allocated.clear()  # model proxy recovery; release ownership without reconnect
+    assert allocated == [other_address, address.lower()]
     await client.close()
+    assert low_level_disconnects[-1] is instances[1]
+    assert allocated == [other_address] and not scanner._clients
+    assert client._client is None
 
 
 async def test_existing_duplicate_allocations_block_connection_before_backend_attempt(tmp_path, monkeypatch):
@@ -575,3 +610,88 @@ async def test_cancel_while_waiting_for_busy_proxy_does_not_connect(tmp_path, mo
     with pytest.raises(asyncio.CancelledError):
         await read
     assert not attempts and client._client is None
+
+
+@pytest.mark.parametrize("cancel_connect", [False, True])
+async def test_real_esphome_backend_sends_targeted_disconnect_after_ha_drops_it(tmp_path, monkeypatch, cancel_connect):
+    """Real ESPHome connect/abandon/disconnect and HA wrapper, mocked API peer."""
+    from contextlib import nullcontext
+    from unittest.mock import MagicMock
+
+    from bleak.backends.device import BLEDevice
+    from bleak_esphome.backend.client import ESPHomeClient, ESPHomeClientData
+    from habluetooth.wrappers import HaBleakClientWrapper
+
+    from custom_components.yeelight_curtain_ble import coordinator as module
+
+    address = "AA:BB:CC:DD:EE:01"
+    address_int = int(address.replace(":", ""), 16)
+    other_address = "AA:BB:CC:DD:EE:02"
+    allocated = [other_address]
+    releases = []
+    entered = asyncio.Event()
+    device = BLEDevice(address, "YLBT_CURT_TEST", {"source": "proxy", "address_type": 0})
+    scanner = SimpleNamespace(
+        name="test proxy", adapter_idx=None,
+        _add_connecting=lambda _address: None,
+        _finished_connecting=lambda *_args: None,
+        get_allocations=lambda: SimpleNamespace(allocated=allocated),
+        connecting=nullcontext,
+    )
+
+    class ProxyAPI:
+        async def bluetooth_device_connect(self, target, *_args, **_kwargs):
+            assert target == address_int
+            allocated.append(address)
+            entered.set()
+            if cancel_connect:
+                await asyncio.Event().wait()
+            raise TimeoutError("proxy connect timed out without connection-state response")
+
+        async def bluetooth_device_disconnect(self, target):
+            releases.append(target)
+            allocated[:] = [item for item in allocated if item != address]
+
+    cache = SimpleNamespace(get_gatt_mtu_cache=lambda _address: None)
+    bluetooth_device = SimpleNamespace(cache=cache, ble_connections_free=1,
+                                       async_untrack_client=MagicMock())
+    data = ESPHomeClientData(
+        bluetooth_device=bluetooth_device, client=ProxyAPI(),
+        device_info=SimpleNamespace(bluetooth_proxy_feature_flags_compat=lambda _: 0),
+        api_version=None, title="test proxy", scanner=scanner,
+    )
+    from functools import partial
+
+    selected = SimpleNamespace(device=device, scanner=scanner,
+                               client=partial(ESPHomeClient, client_data=data),
+                               backend_name="ESPHome", source="proxy")
+    monkeypatch.setattr("habluetooth.wrappers.get_manager", lambda: SimpleNamespace(shutdown=False))
+    monkeypatch.setattr(HaBleakClientWrapper, "_async_get_best_available_backend_and_device", lambda *_: selected)
+    monkeypatch.setattr(module, "BleakClientWithServiceCache", HaBleakClientWrapper)
+    monkeypatch.setattr(module.bluetooth, "async_current_scanners", lambda _hass: [scanner])
+    monkeypatch.setattr(module.bluetooth, "async_ble_device_from_address", lambda *_a, **_k: device)
+    wrappers = []
+
+    async def one_attempt(client_class, ble_device, _name, **kwargs):
+        wrapper = client_class(ble_device, disconnected_callback=kwargs["disconnected_callback"], _is_retry_client=True)
+        wrappers.append(wrapper)
+        await wrapper.connect()
+        return wrapper
+
+    monkeypatch.setattr(module, "establish_connection", one_attempt)
+    client = create_client(HomeAssistant(str(tmp_path)), address)
+    read = asyncio.create_task(client.read_state())
+    await entered.wait()
+    if cancel_connect:
+        await client.close()
+        with pytest.raises(asyncio.CancelledError):
+            await read
+    else:
+        with pytest.raises(TimeoutError):
+            await read
+        await client.close()
+    assert wrappers[0]._backend is None  # HA's normal failed-connect cleanup ran
+    assert wrappers[0]._curtain_retained_backend is None  # release was confirmed
+    assert releases == [address_int]  # actual ESPHome.disconnect called its API
+    assert allocated == [other_address]  # no proxy reboot or unrelated disconnect
+    assert client._client is None

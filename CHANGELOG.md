@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.6.5 — 2026-11-16
+
+- Retain the actual low-level BLE backend independently of the HA wrapper.
+  HA can clear its backend pointer after a failed connection; keeping only
+  the wrapper previously made later disconnect calls return without releasing
+  the device on the proxy.
+- If HA discarded its active backend, disconnect through the retained backend.
+  For ESPHome this sends a targeted device-disconnect request even when its local
+  connection flag is false. Verify local disconnection and reported slot release
+  before dropping the reference or permitting a replacement backend.
+- Keep the retained backend when release fails or its allocation remains. Later
+  cleanup retries use the same backend instead of an empty wrapper. Existing
+  shielded cleanup and per-address ownership apply to this recovery path.
+- Add recovery and failure tests using the real HA wrapper, and timeout/cancellation
+  tests using the real ESPHome BLE backend with a simulated API peer. Verify that
+  disconnect targets only the curtain and leaves another device allocated.
+
+This fixes a reproduced integration-side cleanup gap, rather than only delaying
+new attempts. Physical proxy verification remains pending. Recovery still requires
+the proxy to accept the disconnect request. A slot orphaned by an older version
+or lost across an HA process restart may still need a one-time proxy restart.
+
 ## 0.6.4 — 2026-11-16
 
 - Before every connection attempt, wait up to 30 seconds when all reachable

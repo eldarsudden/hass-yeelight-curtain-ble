@@ -9,3 +9,5 @@ home-assistant-frontend==20261028.6
 pytest==9.2.0
 pytest-asyncio==1.5.0
 ruff==0.17.5
+bleak-esphome==4.0.0
+aioesphomeapi==46.25.0

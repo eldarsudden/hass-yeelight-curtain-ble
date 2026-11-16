@@ -111,8 +111,27 @@ async def connect(hass: HomeAssistant, address: str, disconnected_callback, *, c
     if client_created is not None:
         class TrackedClient(BleakClientWithServiceCache):
             def __init__(self, *args, **kwargs):
+                self._curtain_retained_backend = None
+                self._curtain_active_backend = None
                 super().__init__(*args, **kwargs)
                 client_created(self)
+
+            @property
+            def _backend(self):
+                return self._curtain_active_backend
+
+            @_backend.setter
+            def _backend(self, backend):
+                # Compatibility boundary with Bleak/HA: HA clears _backend on
+                # failed connect, even when the proxy still owns its slot.
+                # Keep an independent reference in this client only. Never
+                # patch HA's global wrapper or alter slot bookkeeping.
+                retained = self._curtain_retained_backend
+                if backend is not None:
+                    if retained is not None and retained is not backend:
+                        raise CurtainError("Cannot replace a BLE backend before its release is confirmed")
+                    self._curtain_retained_backend = backend
+                self._curtain_active_backend = backend
 
             async def connect(self, *args, **kwargs):
                 # A HA wrapper may discard its failed low-level backend. Its
@@ -138,9 +157,19 @@ async def connect(hass: HomeAssistant, address: str, disconnected_callback, *, c
                     raise
 
             async def disconnect(self):
+                backend = self._curtain_retained_backend
+                if self._backend is None and backend is not None:
+                    _LOGGER.debug("Disconnecting retained BLE backend after HA discarded its active client")
+                    # ESPHome's backend sends device_disconnect even if its
+                    # local is_connected is already false. This sends a real
+                    # release request rather than calling an empty wrapper.
+                    await backend.disconnect()
+                    if backend.is_connected:
+                        raise CurtainError("Retained BLE backend is still connected after disconnect")
                 await super().disconnect()
                 # A free slot for another address is not proof of our release.
                 await wait_for_slot_release(hass, address)
+                self._curtain_retained_backend = None
 
         client_class = TrackedClient
     return await establish_connection(
