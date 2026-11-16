@@ -135,6 +135,12 @@ needed. Music effect and palette preferences are preserved. This setting frees
 the slot between operations, but does not coordinate ownership with another BLE
 client that may connect to the curtain.
 
+When every reachable adapter is already establishing another BLE connection,
+the integration waits up to 30 seconds before trying the curtain. If they remain
+busy, the operation fails without starting another connection. Existing persistent
+sessions with other devices do not count as connection attempts. This reduces
+overlap but cannot reserve the proxy against other integrations.
+
 Before each connection attempt, the integration checks whether a scanner still
 reports this curtain in its occupied slots. After disconnect, it waits for this
 address to disappear from the reported allocations. Another free slot does not

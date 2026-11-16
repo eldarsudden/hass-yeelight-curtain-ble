@@ -15,7 +15,10 @@ from custom_components.yeelight_curtain_ble.coordinator import create_client
 
 @pytest.fixture(autouse=True)
 def no_reported_slots():
-    with patch("custom_components.yeelight_curtain_ble.coordinator.bluetooth.async_current_scanners", return_value=[]):
+    with (
+        patch("custom_components.yeelight_curtain_ble.coordinator.bluetooth.async_current_scanners", return_value=[]),
+        patch("custom_components.yeelight_curtain_ble.coordinator.bluetooth.async_scanner_devices_by_address", return_value=[]),
+    ):
         yield
 
 
@@ -372,7 +375,7 @@ async def test_json_timeout_does_not_shorten_backend_disconnect(peripheral):
     await client.close()
 
 
-async def test_real_ha_wrapper_cannot_retry_after_losing_allocated_backend(tmp_path, monkeypatch):
+async def test_real_ha_wrapper_cannot_retry_after_losing_allocated_backend(tmp_path, monkeypatch, caplog):
     """HA drops _backend on connect failure; wrapper.disconnect then does nothing."""
     from bleak.backends.device import BLEDevice
     from habluetooth.wrappers import HaBleakClientWrapper
@@ -421,6 +424,8 @@ async def test_real_ha_wrapper_cannot_retry_after_losing_allocated_backend(tmp_p
     with pytest.raises(CurtainError):
         await client.read_state()
     assert attempts == ["connect"]
+    assert "failure after reserving proxy slot" in caplog.text
+    assert "connect failed before cleanup" in caplog.text
     assert not low_level_disconnects  # the real HA wrapper has lost the backend
     assert client._client._backend is None and client._client is not None
     allocated.clear()  # model proxy recovery; release ownership without reconnect
@@ -472,3 +477,101 @@ async def test_release_waits_for_own_address_even_when_another_slot_is_free(monk
     allocated.remove(address)
     await task
     assert allocated == ["AA:BB:CC:DD:EE:02"]
+
+
+async def test_busy_proxy_defers_without_allocating_then_connects(tmp_path, monkeypatch, peripheral):
+    from custom_components.yeelight_curtain_ble import coordinator as module
+
+    busy = [1]
+    started = asyncio.Event()
+    attempts = []
+    path = SimpleNamespace(scanner=SimpleNamespace(connections_in_progress=lambda: busy[0]))
+    monkeypatch.setattr(module.bluetooth, "async_scanner_devices_by_address", lambda *_: [path])
+    monkeypatch.setattr(module.bluetooth, "async_ble_device_from_address", lambda *_a, **_k: SimpleNamespace(name="test"))
+
+    class Backend(type(peripheral)):
+        def __init__(self, *_args, **kwargs):
+            super().__init__()
+            self.is_connected = False
+            self.disconnected_callback = kwargs["disconnected_callback"]
+            started.set()
+
+        async def connect(self, **_kwargs):
+            attempts.append("connect")
+            self.is_connected = True
+
+    monkeypatch.setattr(module, "BleakClientWithServiceCache", Backend)
+    client = create_client(HomeAssistant(str(tmp_path)), "AA:BB:CC:DD:EE:01")
+    read = asyncio.create_task(client.read_state())
+    await started.wait()
+    await asyncio.sleep(0)
+    assert not attempts and not read.done()
+    busy[0] = 0
+    await read
+    assert attempts == ["connect"]
+    await client.close()
+
+
+async def test_busy_proxy_timeout_does_not_start_backend_connect(tmp_path, monkeypatch, peripheral):
+    from custom_components.yeelight_curtain_ble import coordinator as module
+
+    attempts = []
+    path = SimpleNamespace(scanner=SimpleNamespace(connections_in_progress=lambda: 1))
+    monkeypatch.setattr(module.bluetooth, "async_scanner_devices_by_address", lambda *_: [path])
+    monkeypatch.setattr(module.bluetooth, "async_ble_device_from_address", lambda *_a, **_k: SimpleNamespace(name="test"))
+    monkeypatch.setattr(module, "ADAPTER_IDLE_TIMEOUT", 0.005)
+
+    class Backend(type(peripheral)):
+        def __init__(self, *_args, **kwargs):
+            super().__init__()
+            self.is_connected = False
+            self.disconnected_callback = kwargs["disconnected_callback"]
+
+        async def connect(self, **_kwargs):
+            attempts.append("connect")
+
+    monkeypatch.setattr(module, "BleakClientWithServiceCache", Backend)
+    client = create_client(HomeAssistant(str(tmp_path)), "AA:BB:CC:DD:EE:01")
+    with pytest.raises(CurtainError, match="deferred without allocating"):
+        await client.read_state()
+    assert not attempts and client._client is None
+    await client.close()
+
+
+async def test_idle_path_is_usable_with_persistent_slots_and_another_busy_proxy(monkeypatch):
+    from custom_components.yeelight_curtain_ble import coordinator as module
+
+    paths = [SimpleNamespace(scanner=SimpleNamespace(connections_in_progress=lambda n=n: n))
+             for n in (1, 0)]
+    monkeypatch.setattr(module.bluetooth, "async_scanner_devices_by_address", lambda *_: paths)
+    # Existing connected devices do not count as in-progress connection attempts.
+    await module.wait_for_idle_adapter(object(), "AA:BB:CC:DD:EE:01")
+
+
+async def test_cancel_while_waiting_for_busy_proxy_does_not_connect(tmp_path, monkeypatch, peripheral):
+    from custom_components.yeelight_curtain_ble import coordinator as module
+
+    started = asyncio.Event()
+    attempts = []
+    path = SimpleNamespace(scanner=SimpleNamespace(connections_in_progress=lambda: 1))
+    monkeypatch.setattr(module.bluetooth, "async_scanner_devices_by_address", lambda *_: [path])
+    monkeypatch.setattr(module.bluetooth, "async_ble_device_from_address", lambda *_a, **_k: SimpleNamespace(name="test"))
+
+    class Backend(type(peripheral)):
+        def __init__(self, *_args, **kwargs):
+            super().__init__()
+            self.is_connected = False
+            self.disconnected_callback = kwargs["disconnected_callback"]
+            started.set()
+
+        async def connect(self, **_kwargs):
+            attempts.append("connect")
+
+    monkeypatch.setattr(module, "BleakClientWithServiceCache", Backend)
+    client = create_client(HomeAssistant(str(tmp_path)), "AA:BB:CC:DD:EE:01")
+    read = asyncio.create_task(client.read_state())
+    await started.wait()
+    await client.close()
+    with pytest.raises(asyncio.CancelledError):
+        await read
+    assert not attempts and client._client is None

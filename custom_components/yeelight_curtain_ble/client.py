@@ -179,6 +179,7 @@ class CurtainClient:
                 self._cleanup_required = False
                 return client
             except BaseException:
+                _LOGGER.debug("Curtain BLE setup failed before cleanup", exc_info=True)
                 try:
                     await self._disconnect_locked()
                 except CurtainError:

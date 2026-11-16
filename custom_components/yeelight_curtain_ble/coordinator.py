@@ -44,6 +44,7 @@ _ROOT = Path(__file__).parent
 ERRORS = (CurtainError, BleakError, TimeoutError, OSError)
 SLOT_RELEASE_TIMEOUT = 5.0
 SLOT_CHECK_INTERVAL = 0.1
+ADAPTER_IDLE_TIMEOUT = 30.0
 
 
 def allocated_curtain_slots(hass: HomeAssistant, address: str) -> list[str]:
@@ -71,6 +72,30 @@ async def wait_for_slot_release(hass: HomeAssistant, address: str) -> None:
         ) from error
 
 
+async def wait_for_idle_adapter(hass: HomeAssistant, address: str) -> None:
+    """Defer when every reachable adapter is establishing another connection.
+
+    Established persistent connections are allowed. This does not reserve an
+    adapter or coordinate other integrations; HA still selects the connection.
+    """
+    waiting = False
+    try:
+        async with asyncio.timeout(ADAPTER_IDLE_TIMEOUT):
+            while True:
+                paths = bluetooth.async_scanner_devices_by_address(hass, address, True)
+                if not paths or any(path.scanner.connections_in_progress() == 0 for path in paths):
+                    return
+                if not waiting:
+                    _LOGGER.debug("Deferring curtain connection: reachable Bluetooth adapters are connecting other devices")
+                    waiting = True
+                await asyncio.sleep(SLOT_CHECK_INTERVAL)
+    except TimeoutError as error:
+        raise CurtainError(
+            "Reachable Bluetooth adapters are still connecting other devices; "
+            "curtain connection deferred without allocating another slot"
+        ) from error
+
+
 def load_catalog() -> dict:
     """Load bundled metadata off the HA event loop."""
     return json.loads((_ROOT / "catalog.json").read_text(encoding="utf-8"))
@@ -94,10 +119,18 @@ async def connect(hass: HomeAssistant, address: str, disconnected_callback, *, c
                 # disconnect can then return without releasing the proxy slot.
                 # Inspect allocations before *every* connector retry as well.
                 await wait_for_slot_release(hass, address)
+                await wait_for_idle_adapter(hass, address)
+                # Allocation reports may have changed while waiting.
+                await wait_for_slot_release(hass, address)
                 client_created(self)
                 try:
                     return await super().connect(*args, **kwargs)
-                except BaseException:
+                except BaseException as error:
+                    if not isinstance(error, asyncio.CancelledError):
+                        _LOGGER.warning(
+                            "Curtain BLE connect failed before cleanup (%s): %s",
+                            type(error).__name__, str(error), exc_info=True,
+                        )
                     # establish_connection reuses a client for internal retries.
                     # Do not let its next attempt run over an unclean backend.
                     if client_cleanup is not None:
@@ -252,6 +285,7 @@ class CurtainCoordinator(DataUpdateCoordinator[dict]):
             try:
                 return await self.client.read_state()
             except ERRORS as error:
+                _LOGGER.debug("Curtain state read failed before cleanup", exc_info=True)
                 self.client.invalidate()
                 raise UpdateFailed(str(error)) from error
             finally:
@@ -269,6 +303,7 @@ class CurtainCoordinator(DataUpdateCoordinator[dict]):
                 await operation()
                 state = await self.client.read_state()
             except ERRORS as error:
+                _LOGGER.debug("Curtain command failed before cleanup", exc_info=True)
                 self.client.invalidate()
                 self.async_set_update_error(UpdateFailed(str(error)))
                 raise HomeAssistantError(str(error)) from error

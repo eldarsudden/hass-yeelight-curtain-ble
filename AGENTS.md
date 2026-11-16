@@ -129,6 +129,16 @@ address to clear; raise CurtainError to stop connector retries if it remains.
 A HA wrapper can discard `_backend` after failed connect and then return from
 disconnect without doing anything. The allocation guard must cover that path
 without accessing private proxy credentials or manipulating internal slot lists.
+Before each attempt, use the public HA scanner-device lookup and scanner
+`connections_in_progress()` to wait when every reachable path is already
+establishing another connection. Bound that wait to 30 seconds; a busy timeout
+raises CurtainError before backend connect, without allocating a slot. Allow an
+idle fallback path and do not treat established persistent sessions as busy.
+Recheck curtain allocations after the wait. This is a cooperative check, not a
+global lock against other integrations; HA still selects the actual adapter.
+Record connect failures with type/traceback before cleanup and debug-log original
+setup/read/command errors before a finally-block cleanup can replace them.
+
 Test with the real HaBleakClientWrapper and a simulated low-level backend, not
 only a direct mock client. This prevents retrying over reported stale slots;
 it does not reclaim them or prove firmware cleanup.

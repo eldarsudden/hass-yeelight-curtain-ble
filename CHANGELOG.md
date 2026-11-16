@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.6.4 — 2026-11-16
+
+- Before every connection attempt, wait up to 30 seconds when all reachable
+  adapters are already establishing other connections. A persistent session
+  that is already connected does not trigger this wait. If adapters stay busy,
+  defer the curtain operation without allocating a new slot.
+- Recheck retained curtain allocations after waiting. Keep the existing guard
+  that prevents reconnecting over an unconfirmed release.
+- Log the original connect failure before attempting cleanup, including its
+  exception type and traceback. Add debug traces for read, command and setup
+  failures before a cleanup error can replace them.
+- Test busy-adapter timeout, resumption, cancellation, an idle fallback path
+  and preservation of the original failure in logs.
+
+This reduces overlapping connection attempts observed in user HA logs. It is
+not a global adapter lock: other integrations can still initiate a connection
+after this check, and HA chooses the backend. It does not recover existing
+orphaned proxy slots or replace proxy firmware fixes. Real proxy verification
+of this new deferral remains pending.
+
 ## 0.6.3 — 2026-11-16
 
 - Check reported Bluetooth slot allocations before every connection attempt,
